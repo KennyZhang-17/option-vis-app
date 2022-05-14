@@ -4,4 +4,3 @@ altair
 dash
 plotly
 datetime
-os
