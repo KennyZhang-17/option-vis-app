@@ -3,7 +3,6 @@ import dash
 from dash import dcc
 from dash import html
 from dash.dependencies import Input, Output
-from vega_datasets import data
 import os
 import pandas as pd
 alt.data_transformers.disable_max_rows()
