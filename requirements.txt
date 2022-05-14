@@ -1,0 +1,6 @@
+pandas
+gunicorn
+altair
+dash
+plotly
+datetime

@@ -4,7 +4,7 @@ from dash import dcc
 from dash import html
 from dash.dependencies import Input, Output
 from vega_datasets import data
-
+import os
 import pandas as pd
 alt.data_transformers.disable_max_rows()
 
@@ -16,8 +16,9 @@ date_max = dt.date(2022,5,3)
 name = 'SPY'
 #date = dt.date.today()
 date = dt.date(2022,4,21)
-df = pd.read_csv('/Users/zhehaoz/Documents/CSE 512/option-vis-app/{}/{}{}{}'.format(name, name, date,'close'))
-
+path=os.path.join(os.path.dirname(__file__), '{}/{}{}{}'.format(name, name, date,'close'))
+#df = pd.read_csv('os.path.dirname(__file__)/{}/{}{}{}'.format(name, name, date,'close'))
+df=pd.read_csv(path)
 chart = alt.Chart(df)
 
 class OptionChart:
@@ -133,6 +134,7 @@ def plot_altair(xcol):
     return Selection_strikeAndExpiration(Selection_putCall(markPrice)).to_html()
 
 app = dash.Dash(__name__, external_stylesheets=['https://codepen.io/chriddyp/pen/bWLwgP.css'])
+server = app.server
 
 app.layout = html.Div([
         dcc.Dropdown(
