@@ -5,6 +5,7 @@ from dash import html
 from dash.dependencies import Input, Output
 import os
 import pandas as pd
+import plotly.express as px
 alt.data_transformers.disable_max_rows()
 
 import datetime as dt
@@ -12,10 +13,13 @@ date_min = dt.date(2022,4,18)
 date_max = dt.date(2022,5,3)
 
 
+date=dt.date(2022,4,21)
+name="SPY"
+path=os.path.join(os.path.dirname(__file__), '{}/{}{}{}'.format(name, name, date,'close'))
+    #df = pd.read_csv('os.path.dirname(__file__)/{}/{}{}{}'.format(name, name, date,'close'))
+df=pd.read_csv(path)
 
-
-
-
+fig = px.scatter(df, x="gamma", y="delta")
 
 def plot_altair(date=dt.date(2022,4,21),name="SPY"):
     path=os.path.join(os.path.dirname(__file__), '{}/{}{}{}'.format(name, name, date,'close'))
@@ -133,6 +137,7 @@ def plot_altair(date=dt.date(2022,4,21),name="SPY"):
 app = dash.Dash(__name__, external_stylesheets=['https://codepen.io/chriddyp/pen/bWLwgP.css'])
 server = app.server
 
+
 app.layout = html.Div([
         # dcc.Dropdown(
         #     id='bs', value='Buy',
@@ -153,7 +158,9 @@ app.layout = html.Div([
         html.Iframe(
             id='scatter',
             style={'border-width': '0', 'width': '100%', 'height': '400px'},
-            srcDoc=plot_altair(date=dt.date(2022, 4, 21),name='SPY'))])
+            srcDoc=plot_altair(date=dt.date(2022, 4, 21),name='SPY')),
+        dcc.Graph(figure=fig,id="plot"),
+        dcc.Textarea(id='widget')])
 
 @app.callback(
     Output('scatter', 'srcDoc'),
@@ -161,8 +168,25 @@ app.layout = html.Div([
     Input('stock', 'value')
     #nput('pc', 'value'),
     )
-def update_output(date,name):
-    return plot_altair(date,name)
+
+def update_output(date,value):
+    return plot_altair(date,value)
+    
+@app.callback(
+    Output("widget", "value"),
+     [Input("plot", "selectedData"), Input("plot", "clickData")]
+)
+def update_widget(value,clickData):
+    holder = []
+    if(clickData):
+        holder.append(str(clickData["points"][0]['x'])+","+str(clickData["points"][0]['y']))
+    if(value):
+        for x in value["points"]:
+            holder.append(str(x['x'])+str(x['y']))
+    return str(holder)
+
+
+
 
 if __name__ == '__main__':
     app.run_server(debug=True)
