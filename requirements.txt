@@ -4,3 +4,4 @@ altair
 dash
 plotly
 datetime
+scipy
