@@ -10,8 +10,8 @@ import plotly.graph_objects as go
 from datetime import datetime
 import numpy as np
 import json
-import panel as pn
-pn.extension('vega')
+# import panel as pn
+# pn.extension('vega')
 alt.data_transformers.disable_max_rows()
 
 import datetime as dt
@@ -160,26 +160,26 @@ fig = fig.add_traces(px.scatter(
     .update_traces(marker_color="rgba(0,0,0,0)")
     .data
 )
-name = 'TSLA'
-# date = dt.date.today()
-date = dt.date(2022,5,1)
-df=pd.read_csv('./{}/{}{}{}'.format(name, name, date,'close'))
-# Option Selector
-chart = alt.Chart(df)#.encode(color=putCall_color)
-putCall_color = alt.Color('putCall:N',legend=None,scale=alt.Scale(domain=['PUT','CALL'],range=['red','green']))
-width = 500
-
-buy_selector = alt.selection_multi(name="buy")
-
-buycolor = alt.condition(buy_selector,
-                putCall_color,
-                alt.value('lightgray'))
-buy = chart.mark_point(size=150).encode(
-    alt.X('strikePrice:Q'),
-    alt.Y('putCall:N'),
-    color = buycolor
-    ).add_selection(buy_selector).interactive().properties(width=width)
-vega_pane = pn.pane.Vega(buy, debounce=10)
+# name = 'TSLA'
+# # date = dt.date.today()
+# date = dt.date(2022,5,1)
+# df=pd.read_csv('./{}/{}{}{}'.format(name, name, date,'close'))
+# # Option Selector
+# chart = alt.Chart(df)#.encode(color=putCall_color)
+# putCall_color = alt.Color('putCall:N',legend=None,scale=alt.Scale(domain=['PUT','CALL'],range=['red','green']))
+# width = 500
+#
+# buy_selector = alt.selection_multi(name="buy")
+#
+# buycolor = alt.condition(buy_selector,
+#                 putCall_color,
+#                 alt.value('lightgray'))
+# buy = chart.mark_point(size=150).encode(
+#     alt.X('strikePrice:Q'),
+#     alt.Y('putCall:N'),
+#     color = buycolor
+#     ).add_selection(buy_selector).interactive().properties(width=width)
+# vega_pane = pn.pane.Vega(buy, debounce=10)
 
 
 def expiration_price(name="TSLA",callput="PUT"):
