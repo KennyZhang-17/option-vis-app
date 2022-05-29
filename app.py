@@ -397,15 +397,26 @@ stockprice = 700
 
 date = dt.date(2022,6,4)
 def pricevis(options,stockprice,date):
-    return (OptionPriceVis(options,stockprice,date)).to_html()
+    return OptionPriceVis(options,stockprice,date).to_html()
 
 def pnlvis(options,stockprice,date):
-    return(Option_PnL_Vis(options=options,date=date,centerPrice=stockprice)).to_html()
+    return Option_PnL_Vis(options=options,date=date,centerPrice=stockprice).to_html()
 
 def greekvis(options,stockprice,date):
-    return(Greeks_Vis(options,stockprice,date)).to_html()
+    return Greeks_Vis(options,stockprice,date).to_html()
 
-
+def filter_option(clickData,name,putcall):
+    date = dt.date(2022,5,1)
+    df = pd.read_csv('./data/{}/{}{}{}'.format(name, name, date,'close'))
+    #df['expirationDate2']=[datetime.fromtimestamp(i/1000).date() for i in df['expirationDate']]
+    expir=[datetime.fromtimestamp(i/1000).date() for i in df['expirationDate']]
+    x=clickData['x']
+    y=clickData['y']
+    options=df[(df['strikePrice']==x) & ([(str(i) in y) for i in expir] )]
+    options=options[options['putCall']==putcall]
+    return options
+# def get_price(clickDate):
+#     datetime.strptime(click['y'], "%Y-%m-%d %H:%M").date()
 app = dash.Dash(__name__, external_stylesheets=['https://codepen.io/chriddyp/pen/bWLwgP.css'])
 server = app.server
 
@@ -419,7 +430,7 @@ app.layout = html.Div([
             {'label': 'PUT', 'value': 'PUT'},
             {'label': 'CALL', 'value': 'CALL'}]),
         dcc.Dropdown(
-            id='stock', value='SPY',
+            id='stock', value='TSLA',
             options=[
             {'label': 'SPY', 'value': 'SPY'},
             {'label': 'TSLA', 'value': 'TSLA'}]),
@@ -441,12 +452,13 @@ app.layout = html.Div([
         #     srcDoc=buy.to_html()),
         html.P('Click a future price for prediction'),
         dcc.Graph(figure=fig,id="plot"),
+        html.P('Options and future price selected:'),
         dcc.Textarea(id='widget'),
         dcc.Textarea(id='widget2'),
         html.P('Prediction result:'),
         html.Iframe(
             id='pricevis',
-            style={'border-width': '0', 'width': '100%', 'height': '100px'},
+            style={'border-width': '0', 'width': '100%', 'height': '200px'},
             srcDoc=pricevis(options,stockprice,date)),
         html.Iframe(
             id='pnlvis',
@@ -501,6 +513,62 @@ def update_widget2(clickData):
     #         holder.append(json.dumps({k: x["points"][0][k] for k in ["x", "y"]}))
     #     return str(list(set(holder)))
 
+@app.callback(
+    Output("pricevis", "srcDoc"),
+    Input('stock', 'value'),
+    Input('putcall','value'),
+    Input('expiration_price', 'clickData'),
+    Input('plot','clickData')
+    #Input('expiration_price', 'selectedData')
+)
+
+def update_pricevis(name, putcall,click_option,click_price):
+    if((click_option is not None) & (click_price is not None)):
+        click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
+        click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
+        option=filter_option(click_option,name,putcall)
+        price=click_price['y']
+        date_select=datetime.strptime(click_price['x'], "%Y-%m-%d %H:%M").date()
+        return pricevis(option,price,date_select)
+    return pricevis(options,stockprice,date)
+
+@app.callback(
+    Output("pnlvis", "srcDoc"),
+    Input('stock', 'value'),
+    Input('putcall','value'),
+    Input('expiration_price', 'clickData'),
+    Input('plot','clickData')
+    #Input('expiration_price', 'selectedData')
+)
+
+def update_pnlvis(name, putcall,click_option,click_price):
+    if((click_option is not None) & (click_price is not None)):
+        click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
+        click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
+        option=filter_option(click_option,name,putcall)
+        price=click_price['y']
+        date_select=datetime.strptime(click_price['x'], "%Y-%m-%d %H:%M").date()
+        return pnlvis(option,price,date_select)
+    return pnlvis(options,stockprice,date)
+
+@app.callback(
+    Output("greekvis", "srcDoc"),
+    Input('stock', 'value'),
+    Input('putcall','value'),
+    Input('expiration_price', 'clickData'),
+    Input('plot','clickData')
+    #Input('expiration_price', 'selectedData')
+)
+
+def update_greekvis(name, putcall,click_option,click_price):
+    if((click_option is not None) & (click_price is not None)):
+        click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
+        click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
+        option=filter_option(click_option,name,putcall)
+        price=click_price['y']
+        date_select=datetime.strptime(click_price['x'], "%Y-%m-%d %H:%M").date()
+        return greekvis(option,price,date_select)
+    return greekvis(options,stockprice,date)
 
 if __name__ == '__main__':
     app.run_server(debug=True)
