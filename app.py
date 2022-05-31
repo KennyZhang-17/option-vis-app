@@ -332,25 +332,26 @@ def plot_altair(date=dt.date(2022,4,21),name="SPY"):
 
 
 # Fig for selection price
-name = 'TSLA'
 
-df = pd.read_csv('./{}/{}'.format(name,name+'_PriceHistory'))
-#df = pd.read_csv('https://raw.githubusercontent.com/plotly/datasets/master/finance-charts-apple.csv')
-df['datetime']=[datetime.fromtimestamp(i/1000) for i in df['datetime']]
-fig = go.Figure(data=[go.Candlestick(x=df['datetime'],
-                open=df['open'],
-                high=df['high'],
-                low=df['low'],
-                close=df['close'])])
-fig=fig.update_layout(xaxis_rangeslider_visible=False)
-range=list(df['datetime'].values)+[max(df['datetime'])+dt.timedelta(days=i+1) for i in range(30)]
-fig = fig.add_traces(px.scatter(
-        x=np.repeat(range,500), y=np.tile(np.linspace(np.min(df["low"])-np.std(df["low"]),
-        np.max(df['high'])+np.std(df["high"]), len(range)), 500)
+def plot_selection_price(name="TSLA"):
+    df = pd.read_csv('./data/{}/{}'.format(name,name+'_PriceHistory'))
+    #df = pd.read_csv('https://raw.githubusercontent.com/plotly/datasets/master/finance-charts-apple.csv')
+    df['datetime']=[datetime.fromtimestamp(i/1000) for i in df['datetime']]
+    fig = go.Figure(data=[go.Candlestick(x=df['datetime'],
+                    open=df['open'],
+                    high=df['high'],
+                    low=df['low'],
+                    close=df['close'])])
+    fig=fig.update_layout(xaxis_rangeslider_visible=False)
+    prange=list(df['datetime'].values)+[max(df['datetime'])+dt.timedelta(days=i+1) for i in range(30)]
+    fig = fig.add_traces(px.scatter(
+            x=np.repeat(prange,500), y=np.tile(np.linspace(np.min(df["low"])-np.std(df["low"]),
+            np.max(df['high'])+np.std(df["high"]), len(prange)), 500)
+        )
+        .update_traces(marker_color="rgba(0,0,0,0)")
+        .data
     )
-    .update_traces(marker_color="rgba(0,0,0,0)")
-    .data
-)
+    return fig
 # name = 'TSLA'
 # # date = dt.date.today()
 # date = dt.date(2022,5,1)
@@ -375,12 +376,16 @@ fig = fig.add_traces(px.scatter(
 
 def expiration_price(name="TSLA",callput="PUT"):
     date = dt.date(2022,5,1)
-    df = pd.read_csv('./{}/{}{}{}'.format(name, name, date,'close'))
+    df = pd.read_csv('./data/{}/{}{}{}'.format(name, name, date,'close'))
     df = df[df["putCall"]==callput]
     df['expirationDate']=[datetime.fromtimestamp(i/1000) for i in df['expirationDate']]
     df = df[df["expirationDate"].dt.date<dt.date(2023,1,1)]
     fig = px.scatter(df, x="strikePrice", y="expirationDate")
+    fig.update_layout(clickmode='event+select')
     return fig
+
+# Initialize
+#fig=plot_selection_price(name="TSLA")
 
 # Fig for results
 name = 'TSLA'
@@ -434,12 +439,12 @@ app.layout = html.Div([
             options=[
             {'label': 'SPY', 'value': 'SPY'},
             {'label': 'TSLA', 'value': 'TSLA'}]),
-        dcc.DatePickerSingle(
-                    id="date-single",
-                    min_date_allowed=date_min,
-                    max_date_allowed=date_max,
-                    initial_visible_month=dt.date(2022, 4, 1),
-                    date=dt.date(2022, 4, 21)),
+        # dcc.DatePickerSingle(
+        #             id="date-single",
+        #             min_date_allowed=date_min,
+        #             max_date_allowed=date_max,
+        #             initial_visible_month=dt.date(2022, 4, 1),
+        #             date=dt.date(2022, 4, 21)),
         # html.Iframe(
         #     id='scatter',
         #     style={'border-width': '0', 'width': '100%', 'height': '400px'},
@@ -451,10 +456,11 @@ app.layout = html.Div([
         #     style={'border-width': '0', 'width': '100%', 'height': '400px'},
         #     srcDoc=buy.to_html()),
         html.P('Click a future price for prediction'),
-        dcc.Graph(figure=fig,id="plot"),
+        dcc.Graph(figure=plot_selection_price(name="TSLA"),id="plot"),
         html.P('Options and future price selected:'),
         dcc.Textarea(id='widget'),
-        dcc.Textarea(id='widget2'),
+        #dcc.Textarea(id='widget2'),
+        dcc.Textarea(id='widget3'),
         html.P('Prediction result:'),
         html.Iframe(
             id='pricevis',
@@ -497,78 +503,154 @@ def update_widget(clickData):
 def update_plot(a,b):
     return expiration_price(name=b,callput=a)
 
-@app.callback(
-    Output("widget2", "value"),
-    Input('expiration_price', 'clickData'),
-    #Input('expiration_price', 'selectedData')
-)
-
-def update_widget2(clickData):
-    #holder = []
-    if(clickData):
-        #holder.append(str(int(clickData["points"][0]["x"])))
-        return json.dumps({k: clickData["points"][0][k] for k in ["x", "y"]})
-    # if(value):
-    #     for x in value["points"]:
-    #         holder.append(json.dumps({k: x["points"][0][k] for k in ["x", "y"]}))
-    #     return str(list(set(holder)))
+# @app.callback(
+#     Output("widget2", "value"),
+#     Input('expiration_price', 'clickData'),
+#     #Input('expiration_price', 'selectedData')
+# )
+#
+# def update_widget2(clickData):
+#     #holder = []
+#     if(clickData):
+#         #holder.append(str(int(clickData["points"][0]["x"])))
+#         return json.dumps({k: clickData["points"][0][k] for k in ["x", "y"]})
+#     # if(value):
+#     #     for x in value["points"]:
+#     #         holder.append(json.dumps({k: x["points"][0][k] for k in ["x", "y"]}))
+#     #     return str(list(set(holder)))
 
 @app.callback(
     Output("pricevis", "srcDoc"),
     Input('stock', 'value'),
     Input('putcall','value'),
     Input('expiration_price', 'clickData'),
+    Input('expiration_price', 'selectedData'),
     Input('plot','clickData')
     #Input('expiration_price', 'selectedData')
 )
-
-def update_pricevis(name, putcall,click_option,click_price):
-    if((click_option is not None) & (click_price is not None)):
-        click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
+def update_pricevis(name, putcall,click_option,select_option,click_price):
+    # if(click_option):
+    #     click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
+    #     option=filter_option(click_option,name,putcall)
+    if(select_option):
+        holder=[]
+        for x in select_option["points"]:
+            holder.append({k:x[k] for k in ["x", "y"]})
+        option=filter_option(holder[0],name,putcall)
+        for i in holder[1:len(holder)]:
+            s=filter_option(i,name,putcall)
+            option=pd.concat([option,s])
+    if((select_option is not None) & (click_price is not None)):
         click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
-        option=filter_option(click_option,name,putcall)
         price=click_price['y']
         date_select=datetime.strptime(click_price['x'], "%Y-%m-%d %H:%M").date()
         return pricevis(option,price,date_select)
     return pricevis(options,stockprice,date)
+# def update_pricevis(name, putcall,click_option,click_price):
+#     if((click_option is not None) & (click_price is not None)):
+#         click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
+#         click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
+#         option=filter_option(click_option,name,putcall)
+#         price=click_price['y']
+#         date_select=datetime.strptime(click_price['x'], "%Y-%m-%d %H:%M").date()
+#         return pricevis(option,price,date_select)
+#     return pricevis(options,stockprice,date)
 
 @app.callback(
     Output("pnlvis", "srcDoc"),
     Input('stock', 'value'),
     Input('putcall','value'),
     Input('expiration_price', 'clickData'),
+    Input('expiration_price', 'selectedData'),
     Input('plot','clickData')
     #Input('expiration_price', 'selectedData')
 )
-
-def update_pnlvis(name, putcall,click_option,click_price):
-    if((click_option is not None) & (click_price is not None)):
-        click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
+def update_pnlvis(name, putcall,click_option,select_option,click_price):
+    # if(click_option):
+    #     click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
+    #     option=filter_option(click_option,name,putcall)
+    if(select_option):
+        holder=[]
+        for x in select_option["points"]:
+            holder.append({k:x[k] for k in ["x", "y"]})
+        option=filter_option(holder[0],name,putcall)
+        for i in holder[1:len(holder)]:
+            s=filter_option(i,name,putcall)
+            option=pd.concat([option,s])
+    if((select_option is not None) & (click_price is not None)):
         click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
-        option=filter_option(click_option,name,putcall)
         price=click_price['y']
         date_select=datetime.strptime(click_price['x'], "%Y-%m-%d %H:%M").date()
         return pnlvis(option,price,date_select)
     return pnlvis(options,stockprice,date)
+# def update_pnlvis(name, putcall,click_option,click_price):
+#     if((click_option is not None) & (click_price is not None)):
+#         click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
+#         click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
+#         option=filter_option(click_option,name,putcall)
+#         price=click_price['y']
+#         date_select=datetime.strptime(click_price['x'], "%Y-%m-%d %H:%M").date()
+#         return pnlvis(option,price,date_select)
+#     return pnlvis(options,stockprice,date)
 
 @app.callback(
     Output("greekvis", "srcDoc"),
     Input('stock', 'value'),
     Input('putcall','value'),
     Input('expiration_price', 'clickData'),
+    Input('expiration_price', 'selectedData'),
     Input('plot','clickData')
     #Input('expiration_price', 'selectedData')
 )
 
-def update_greekvis(name, putcall,click_option,click_price):
-    if((click_option is not None) & (click_price is not None)):
-        click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
+def update_greekvis(name, putcall,click_option,select_option,click_price):
+    # if(click_option):
+    #     click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
+    #     option=filter_option(click_option,name,putcall)
+    if(select_option):
+        holder=[]
+        for x in select_option["points"]:
+            holder.append({k:x[k] for k in ["x", "y"]})
+        option=filter_option(holder[0],name,putcall)
+        for i in holder[1:len(holder)]:
+            s=filter_option(i,name,putcall)
+            option=pd.concat([option,s])
+    if((select_option is not None) & (click_price is not None)):
         click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
-        option=filter_option(click_option,name,putcall)
         price=click_price['y']
         date_select=datetime.strptime(click_price['x'], "%Y-%m-%d %H:%M").date()
         return greekvis(option,price,date_select)
     return greekvis(options,stockprice,date)
+
+@app.callback(
+    Output("widget3", "value"),
+    #Input('expiration_price', 'clickData'),
+    Input('expiration_price', 'selectedData')
+)
+
+def update_widget3(selectedData):
+    #holder = []
+    if(selectedData):
+        #holder.append(str(int(clickData["points"][0]["x"])))
+        #return selectedData
+        holder=[]
+        for x in selectedData["points"]:
+            holder.append({k:x[k] for k in ["x", "y"]})
+        #return json.dumps({k: selectedData["points"][0][k] for k in ["x", "y"]})
+        return str(holder)
+    # if(value):
+    #     for x in value["points"]:
+    #         holder.append(json.dumps({k: x["points"][0][k] for k in ["x", "y"]}))
+    #     return str(list(set(holder)))
+
+@app.callback(
+    Output("plot", "figure"),
+    Input('stock', 'value')
+)
+
+def update_plot(name):
+    return plot_selection_price(name)
+
 
 if __name__ == '__main__':
     app.run_server(debug=True)
