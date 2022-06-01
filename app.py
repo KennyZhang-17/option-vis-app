@@ -28,6 +28,100 @@ date_max = dt.date(2022,5,3)
 # df=pd.read_csv(path)
 
 #fig = px.scatter(df, x="gamma", y="delta")
+def optionprice(type,S,K,tau,sig,dft=0):
+    '''
+    type : option type: 'CALL' or 'PUT'
+    S: stock price: float/int
+    K: strike price: float/int
+    tau: days left to expiration: float/int
+    sig: volatility: float/int, without %
+    dft: drift rate in years (due to bias or inflation): float, default=0, best match for TSLA around 0.02
+    '''
+
+    tau = max(tau,0)/ 365 # turn in to years, avoid negative
+    sig = sig/100 # add %
+
+    if type=='CALL':
+        if S == 0:  # this is to avoid log(0) issues
+            return 0.0
+        elif tau == 0 or sig == 0:  # this is to avoid 0/0 issues
+            return max(S - K, 0)
+        else:
+            d = (np.log(S / K) + dft * tau) / (sig * np.sqrt(tau))
+
+            d1 = d + sig * np.sqrt(tau) / 2
+
+            d2 = d - sig * np.sqrt(tau) / 2
+
+            price =  np.exp(dft * tau) * S * stats.norm.cdf(d1, 0.0, 1.0) - K * stats.norm.cdf(d2, 0.0, 1.0)
+        return price
+
+    elif type == 'PUT':
+        if S == 0:  # this is to avoid log(0) issues
+            return 0.0
+        elif tau == 0 or sig == 0:  # this is to avoid 0/0 issues
+            return max(K - S, 0)
+        else:
+            d = (np.log(S / K) + dft * tau) / (sig * np.sqrt(tau))
+
+            d1 = -d + sig * np.sqrt(tau) / 2
+
+            d2 = -d - sig * np.sqrt(tau) / 2
+
+            price = K * stats.norm.cdf(d1, 0.0, 1.0) - np.exp(dft * tau) * S * stats.norm.cdf(d2, 0.0, 1.0)
+
+            return price
+    else:
+        sys.exit("option type error")
+
+def greeks_theo(name,type,S,K,tau,sig,dft=0):
+    if name=='delta':
+        res = optionprice(type,S,K,tau,sig,dft)-optionprice(type,S+1,K,tau,sig,dft)
+    elif name=='theta':
+        res = optionprice(type,S,K,tau+1,sig,dft)-optionprice(type,S,K,tau,sig,dft)
+    elif name=='gamma':
+        res = optionprice(type,S+1,K,tau,sig,dft)+optionprice(type,S-1,K,tau,sig,dft)-2*optionprice(type,S,K,tau,sig,dft)
+    else:
+        sys.exit("option type error")
+    return res * 100
+
+
+def daysLeft(expiration,date):
+    #  exipration: in Epoch ms
+    # date: in dt.date or datetime
+    secondsToExpiration = (expiration / 1000 - int(date.strftime('%s')))
+    daysToExpiration = secondsToExpiration / (24*3600)
+    return daysToExpiration
+
+def optionpriceRow(option,stockprice,date):
+    # stockprice: float
+    # date: in dt.date or datetime
+
+    secondsToExpiration = (option.expirationDate / 1000 - int(date.strftime('%s')))
+    daysToExpiration = secondsToExpiration / (24*3600)
+    return optionprice(option.putCall,stockprice,option.strikePrice,daysToExpiration,option.volatility)
+
+
+def linear_price_range(latestPrice,percent=0.01,stepNum=20):
+    low = latestPrice*((1-percent))
+    high = latestPrice*((1+percent))
+    step = (high-low) / stepNum
+    priceRange = [ low + step*num for num in range(stepNum+1)]
+    return priceRange
+
+def option_stockprice_dates_DF(priceRange,dateRange,options):
+    # https://stackoverflow.com/questions/42168103/how-to-expand-flatten-pandas-dataframe-efficiently
+    # https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.explode.html
+
+    """
+    priceRange: list
+    dateRange: list in Epoch(s)
+    options: dataframe
+    """
+    options['stockPrice'] = options.apply(lambda df:priceRange,axis=1)
+    options['dates'] = options.apply(lambda df:dateRange,axis=1)
+    newdf = options.explode('stockPrice').explode('dates')
+    return newdf
 
 def optionprice(type,S,K,tau,sig,dft=0):
     '''
@@ -121,6 +215,8 @@ def Option_PnL_Vis(options,date,centerPrice):
     centerPrice: The visualization will draw the PnL diagram around centerPrice
     """
 
+
+
     def option_stockprice_DF(centerPrice,options,stepNum=500,percent=0.8):
         # https://stackoverflow.com/questions/42168103/how-to-expand-flatten-pandas-dataframe-efficiently
         # https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.explode.html
@@ -131,7 +227,7 @@ def Option_PnL_Vis(options,date,centerPrice):
         low = centerPrice*((1-percent))
         high = centerPrice*((1+percent))
         step = (high-low) / stepNum
-        priceRange = [(low + step*i) for i in np.arange(0,stepNum+1,1)]
+        priceRange = [ low + step*num for num in range(stepNum+1)]
         options['stockPrice'] = options.apply(lambda df:priceRange,axis=1)
         newdf = options.explode('stockPrice')
         return newdf
@@ -145,33 +241,86 @@ def Option_PnL_Vis(options,date,centerPrice):
 
     optionss['Return'] = optionss.apply(lambda df: (df.ExpectedPrice - df.mark)*df.Num,axis=1)
 
-    indivual = alt.Chart(optionss).mark_line(thickness=20).encode(
+    indivual = alt.Chart(optionss).encode(
         x='stockPrice:Q',
         y='Return:Q',
         color='symbol:N',
-        tooltip = ['description','Return','Num']
+        tooltip = ['description','stockPrice','Return','Num']
     )
 
-    total = alt.Chart(optionss).mark_line(color='black',thickness=40).encode(
+    # https://altair-viz.github.io/gallery/multiline_highlight.html
+
+    highlight = alt.selection(type='single', on='mouseover',
+                        fields=['symbol'], nearest=True)
+
+    points = indivual.mark_circle().encode(
+        opacity=alt.value(0)
+    ).add_selection(
+        highlight
+    )
+
+    lines = indivual.mark_line().encode(size=alt.condition(~highlight, alt.value(1), alt.value(3)))
+
+    res = (points+lines).interactive()
+
+
+
+    # res = alt.concat(res).properties(
+    #     title=alt.TitleParams(
+    #         ['black line is the overall PnL'],
+    #         baseline='bottom',
+    #         orient='bottom',
+    #         anchor='end',
+    #         fontWeight='normal',
+    #         fontSize=10,
+
+    #         )
+    # )
+
+
+    # https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.groupby.html
+    # https://stackoverflow.com/questions/20490274/how-to-reset-index-in-a-pandas-dataframe
+    totalReturnDF = optionss[['stockPrice','Return']].groupby(['stockPrice']).sum().reset_index()
+
+
+    total = alt.Chart(totalReturnDF).mark_line(color='black').encode(
+        x='stockPrice',
+        y=alt.Y('Return:Q',title='Total Return'),
+    )
+
+    # https://altair-viz.github.io/gallery/multiline_tooltip.html
+
+    nearest = alt.selection(type='single', nearest=True, on='mouseover',
+                            fields=['stockPrice'], empty='none')
+
+    selectors = alt.Chart(totalReturnDF).mark_point().encode(
         x='stockPrice:Q',
-        y='sum(Return):Q',
+        opacity=alt.value(0),
+    ).add_selection(
+        nearest
     )
 
-    res = indivual + total
-
-    res = alt.concat(res).properties(
-        title=alt.TitleParams(
-            ['black line is the overall PnL'],
-            baseline='bottom',
-            orient='bottom',
-            anchor='end',
-            fontWeight='normal',
-            fontSize=10,
-
-            )
+    points = total.mark_point().encode(
+        opacity=alt.condition(nearest, alt.value(1), alt.value(0))
     )
+
+    text = total.mark_text(align='left', dx=5, dy=-5).encode(
+        text=alt.condition(nearest, 'Return:Q', alt.value(' '))
+    )
+
+    rules = alt.Chart(totalReturnDF).mark_rule(color='gray').encode(
+        x='stockPrice:Q'
+    ).transform_filter(
+        nearest
+    )
+
+    total = alt.layer(total, selectors, rules, points, text)
+
+
+    res = res.properties(width=600) | total.properties(width=600)
 
     return res
+
 def Greeks_Vis(options,stockprice,date):
     """
     options: dataframe of options (pandas dataframe)
@@ -217,118 +366,6 @@ def Greeks_Vis(options,stockprice,date):
 
     return delta_vis & theta_vis
 
-def plot_altair(date=dt.date(2022,4,21),name="SPY"):
-    path=os.path.join(os.path.dirname(__file__), '{}/{}{}{}'.format(name, name, date,'close'))
-    #df = pd.read_csv('os.path.dirname(__file__)/{}/{}{}{}'.format(name, name, date,'close'))
-    df=pd.read_csv(path)
-    chart = alt.Chart(df)
-
-    class OptionChart:
-        def __init__(self,chart):
-            self.chart = chart
-
-        def add_expiration_selector(self):
-            pass
-
-    # daysToExpiration selector and legend
-
-
-
-
-    def add_expiration_selector(chart):
-        expiration_selector = alt.selection_multi(fields=['daysToExpiration'],on='mouseover', nearest=True)
-
-        legend = alt.Chart(df).mark_square(size=300).encode(
-            alt.X('daysToExpiration:O',axis=alt.Axis(labelAngle=0)),
-            color = alt.condition(expiration_selector,alt.Color('daysToExpiration:O',legend=None),alt.value('lightgray'))
-        ).add_selection(expiration_selector)
-        return legend | chart.transform_filter()
-
-    # Simplify coding
-
-    putCall_color = alt.Color('putCall:N',legend=None,scale=alt.Scale(domain=['PUT','CALL'],range=['red','green']))
-
-    chart = alt.Chart(df)#.encode(color=putCall_color)
-
-    strike_as_x = chart.encode(alt.X('strikePrice:Q'))
-
-    theoPrice = strike_as_x.mark_line().encode(alt.Y('theoreticalOptionValue:Q'))
-    markPrice = strike_as_x.mark_point().encode(alt.Y('mark:Q'))
-    priceRange = strike_as_x.mark_area(opacity=0.3).encode(alt.Y('lowPrice:Q'),alt.Y2('highPrice:Q'))
-
-    prices = theoPrice
-
-    # Expiration selector
-
-    expiration_selector = alt.selection_multi(fields=['daysToExpiration'],on='mouseover', nearest=True)
-
-    expiration_legend = chart.mark_square(size=300).encode(
-        alt.X('daysToExpiration:O',axis=alt.Axis(labelAngle=0)),
-        color = alt.condition(expiration_selector,alt.Color('daysToExpiration:O',legend=None),alt.value('lightgray'))
-    ).add_selection(expiration_selector)
-
-    # Strike selector
-
-    brush_x = alt.selection_interval(
-        encodings=['x'] # limit selection to x-axis (year) values
-    )
-
-    strikes = chart.mark_tick().add_selection(
-        brush_x
-    ).encode(
-        alt.X('strikePrice:Q'),
-        color = alt.condition(brush_x,alt.Color('strikePrice:Q',legend=None),alt.value('lightgray'))
-    )
-
-    # PutCall selector
-
-    putOrCall_selector = alt.selection_multi(fields=['putCall'])
-    putOrCall_selector_color = alt.condition(putOrCall_selector,
-                    putCall_color,
-                    alt.value('lightgray'))
-
-    legend_putOrCall = chart.mark_circle(size=300).encode(
-        alt.Y('putCall:N',axis=alt.Axis(orient='right')),
-        color = putOrCall_selector_color
-    ).add_selection(
-        putOrCall_selector
-    )
-
-    def Selection_putCall(chart):
-        return legend_putOrCall & chart.transform_filter(putOrCall_selector)
-
-    # legend_putOrCall & strikes & expiration_legend & prices.encode(putCall_color).transform_filter(brush_x & expiration_selector & putOrCall_selector)
-
-
-
-    brush = alt.selection_interval()
-    strikesNexpiration = alt.Chart(df).mark_tick().add_selection(brush).encode(
-        alt.X('strikePrice:Q'),
-        alt.Y('daysToExpiration:O',sort='descending'),
-        color = alt.condition(brush,alt.Color('strikePrice:Q',legend=None),alt.value('lightgray'))
-    )
-
-    def Selection_strikeAndExpiration(chart):
-        return strikesNexpiration | chart.transform_filter(brush)
-
-
-
-    tooltip = ['description','daysToExpiration','mark','totalVolume','delta','theta','gamma','openInterest']
-
-
-    optionSelect = alt.selection_multi()
-    optionSelect_color = alt.condition(optionSelect,
-                    putCall_color,
-                    alt.value('lightgray'))
-
-    markPrice = markPrice.encode(alt.Size('totalVolume'),
-        alt.Opacity('daysToExpiration',sort='descending',legend=None),
-        alt.X('strikePrice:Q',scale=alt.Scale(domain=brush)),
-        # putCall_color,
-        color = optionSelect_color,
-        tooltip=tooltip
-        ).add_selection(optionSelect)
-    return Selection_strikeAndExpiration(Selection_putCall(markPrice)).to_html()
 
 
 # Fig for selection price
@@ -380,7 +417,7 @@ def expiration_price(name="TSLA",callput="PUT"):
     df = df[df["putCall"]==callput]
     df['expirationDate']=[datetime.fromtimestamp(i/1000) for i in df['expirationDate']]
     df = df[df["expirationDate"].dt.date<dt.date(2023,1,1)]
-    fig = px.scatter(df, x="strikePrice", y="expirationDate")
+    fig = px.scatter(df, x="strikePrice", y="expirationDate",title = "Select "+callput)
     fig.update_layout(clickmode='event+select')
     return fig
 
@@ -429,11 +466,12 @@ server = app.server
 app.layout = html.Div([
         html.H1('Option Visualization Tool'),
         html.P('Developed by Yang Yu and Kenny Zhang from University of Washington'),
-        dcc.Dropdown(
-            id='putcall', value='PUT',
-            options=[
-            {'label': 'PUT', 'value': 'PUT'},
-            {'label': 'CALL', 'value': 'CALL'}]),
+        # dcc.Dropdown(
+        #     id='putcall', value='PUT',
+        #     options=[
+        #     {'label': 'PUT', 'value': 'PUT'},
+        #     {'label': 'CALL', 'value': 'CALL'}]),
+        html.P('Select a stock for trading'),
         dcc.Dropdown(
             id='stock', value='TSLA',
             options=[
@@ -449,8 +487,12 @@ app.layout = html.Div([
         #     id='scatter',
         #     style={'border-width': '0', 'width': '100%', 'height': '400px'},
         #     srcDoc=plot_altair(date=dt.date(2022, 4, 21),name='SPY')),
-        html.P('Click an option for trading'),
-        dcc.Graph(figure=expiration_price(name="TSLA",callput="CALL"),id="expiration_price"),
+        html.P('Click option(s) for trading'),
+        html.Div(className='row',children=[
+        dcc.Graph(figure=expiration_price(name="TSLA",callput="CALL"),id="expiration_price",style={'display': 'inline-block'}),
+        dcc.Graph(figure=expiration_price(name="TSLA",callput="PUT"),id="expiration_price_put",style={'display': 'inline-block'}),
+    ]),
+        #dcc.Graph(figure=expiration_price(name="TSLA",callput="CALL"),id="expiration_price"),
         # html.Iframe(
         #     id='option_selector',
         #     style={'border-width': '0', 'width': '100%', 'height': '400px'},
@@ -462,18 +504,28 @@ app.layout = html.Div([
         #dcc.Textarea(id='widget2'),
         dcc.Textarea(id='widget3'),
         html.P('Prediction result:'),
-        html.Iframe(
-            id='pricevis',
-            style={'border-width': '0', 'width': '100%', 'height': '200px'},
-            srcDoc=pricevis(options,stockprice,date)),
+        html.Div(className='row',children=[
+                html.Iframe(
+                    id='pricevis',
+                    style={'border-width': '0', 'width': '100%', 'height': '140px'},
+                    srcDoc=pricevis(options,stockprice,date)),
+                html.Iframe(
+                    id='greekvis',
+                    style={'border-width': '0', 'width': '100%', 'height': '200px'},
+                    srcDoc=greekvis(options,stockprice,date))
+    ]),
+        # html.Iframe(
+        #     id='pricevis',
+        #     style={'border-width': '0', 'width': '100%', 'height': '200px'},
+        #     srcDoc=pricevis(options,stockprice,date)),
         html.Iframe(
             id='pnlvis',
             style={'border-width': '0', 'width': '100%', 'height': '400px'},
             srcDoc=pnlvis(options,stockprice,date)),
-        html.Iframe(
-            id='greekvis',
-            style={'border-width': '0', 'width': '100%', 'height': '200px'},
-            srcDoc=greekvis(options,stockprice,date)),
+        # html.Iframe(
+        #     id='greekvis',
+        #     style={'border-width': '0', 'width': '100%', 'height': '200px'},
+        #     srcDoc=greekvis(options,stockprice,date)),
         ])
 
 # @app.callback(
@@ -492,16 +544,25 @@ app.layout = html.Div([
 )
 def update_widget(clickData):
     if(clickData):
-        return json.dumps({k: clickData["points"][0][k] for k in ["x", "y"]})
+        return str([clickData["points"][0][k] for k in ["x", "y"]])
 
 @app.callback(
     Output("expiration_price", "figure"),
-    Input('putcall', 'value'),
+#    Input('putcall', 'value'),
     Input('stock', 'value')
 )
 
-def update_plot(a,b):
-    return expiration_price(name=b,callput=a)
+def update_plot(b):
+    return expiration_price(name=b,callput="CALL")
+
+@app.callback(
+    Output("expiration_price_put", "figure"),
+#    Input('putcall', 'value'),
+    Input('stock', 'value')
+)
+
+def update_plot(b):
+    return expiration_price(name=b,callput="PUT")
 
 # @app.callback(
 #     Output("widget2", "value"),
@@ -522,13 +583,14 @@ def update_plot(a,b):
 @app.callback(
     Output("pricevis", "srcDoc"),
     Input('stock', 'value'),
-    Input('putcall','value'),
     Input('expiration_price', 'clickData'),
     Input('expiration_price', 'selectedData'),
+    Input('expiration_price_put', 'clickData'),
+    Input('expiration_price_put', 'selectedData'),
     Input('plot','clickData')
     #Input('expiration_price', 'selectedData')
 )
-def update_pricevis(name, putcall,click_option,select_option,click_price):
+def update_pricevis(name,click_option,select_option,click_option_put,select_option_put,click_price):
     # if(click_option):
     #     click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
     #     option=filter_option(click_option,name,putcall)
@@ -536,10 +598,22 @@ def update_pricevis(name, putcall,click_option,select_option,click_price):
         holder=[]
         for x in select_option["points"]:
             holder.append({k:x[k] for k in ["x", "y"]})
-        option=filter_option(holder[0],name,putcall)
+        option=filter_option(holder[0],name,"CALL")
         for i in holder[1:len(holder)]:
-            s=filter_option(i,name,putcall)
+            s=filter_option(i,name,"CALL")
             option=pd.concat([option,s])
+    if(select_option_put):
+        holder=[]
+        for x in select_option_put["points"]:
+            holder.append({k:x[k] for k in ["x", "y"]})
+        option_put=filter_option(holder[0],name,"PUT")
+        for i in holder[1:len(holder)]:
+            s=filter_option(i,name,"PUT")
+            option_put=pd.concat([option_put,s])
+    if((select_option is not None) & (select_option_put is not None)):
+        option=pd.concat([option,option_put])
+    elif(select_option_put is not None):
+        option=option_put
     if((select_option is not None) & (click_price is not None)):
         click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
         price=click_price['y']
@@ -559,30 +633,41 @@ def update_pricevis(name, putcall,click_option,select_option,click_price):
 @app.callback(
     Output("pnlvis", "srcDoc"),
     Input('stock', 'value'),
-    Input('putcall','value'),
     Input('expiration_price', 'clickData'),
     Input('expiration_price', 'selectedData'),
+    Input('expiration_price_put', 'clickData'),
+    Input('expiration_price_put', 'selectedData'),
     Input('plot','clickData')
     #Input('expiration_price', 'selectedData')
 )
-def update_pnlvis(name, putcall,click_option,select_option,click_price):
-    # if(click_option):
-    #     click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
-    #     option=filter_option(click_option,name,putcall)
+def update_pnlvis(name,click_option,select_option,click_option_put,select_option_put,click_price):
     if(select_option):
         holder=[]
         for x in select_option["points"]:
             holder.append({k:x[k] for k in ["x", "y"]})
-        option=filter_option(holder[0],name,putcall)
+        option=filter_option(holder[0],name,"CA::")
         for i in holder[1:len(holder)]:
-            s=filter_option(i,name,putcall)
+            s=filter_option(i,name,"CALL")
             option=pd.concat([option,s])
+    if(select_option_put):
+        holder=[]
+        for x in select_option_put["points"]:
+            holder.append({k:x[k] for k in ["x", "y"]})
+        option_put=filter_option(holder[0],name,"PUT")
+        for i in holder[1:len(holder)]:
+            s=filter_option(i,name,"PUT")
+            option_put=pd.concat([option_put,s])
+    if((select_option is not None) & (select_option_put is not None)):
+        option=pd.concat([option,option_put])
+    elif(select_option_put is not None):
+        option=option_put
     if((select_option is not None) & (click_price is not None)):
         click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
         price=click_price['y']
         date_select=datetime.strptime(click_price['x'], "%Y-%m-%d %H:%M").date()
         return pnlvis(option,price,date_select)
     return pnlvis(options,stockprice,date)
+
 # def update_pnlvis(name, putcall,click_option,click_price):
 #     if((click_option is not None) & (click_price is not None)):
 #         click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
@@ -596,25 +681,33 @@ def update_pnlvis(name, putcall,click_option,select_option,click_price):
 @app.callback(
     Output("greekvis", "srcDoc"),
     Input('stock', 'value'),
-    Input('putcall','value'),
     Input('expiration_price', 'clickData'),
     Input('expiration_price', 'selectedData'),
+    Input('expiration_price_put', 'clickData'),
+    Input('expiration_price_put', 'selectedData'),
     Input('plot','clickData')
-    #Input('expiration_price', 'selectedData')
 )
-
-def update_greekvis(name, putcall,click_option,select_option,click_price):
-    # if(click_option):
-    #     click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
-    #     option=filter_option(click_option,name,putcall)
+def update_greekvis(name,click_option,select_option,click_option_put,select_option_put,click_price):
     if(select_option):
         holder=[]
         for x in select_option["points"]:
             holder.append({k:x[k] for k in ["x", "y"]})
-        option=filter_option(holder[0],name,putcall)
+        option=filter_option(holder[0],name,"CALL")
         for i in holder[1:len(holder)]:
-            s=filter_option(i,name,putcall)
+            s=filter_option(i,name,"CALL")
             option=pd.concat([option,s])
+    if(select_option_put):
+        holder=[]
+        for x in select_option_put["points"]:
+            holder.append({k:x[k] for k in ["x", "y"]})
+        option_put=filter_option(holder[0],name,"PUT")
+        for i in holder[1:len(holder)]:
+            s=filter_option(i,name,"PUT")
+            option_put=pd.concat([option_put,s])
+    if((select_option is not None) & (select_option_put is not None)):
+        option=pd.concat([option,option_put])
+    elif(select_option_put is not None):
+        option=option_put
     if((select_option is not None) & (click_price is not None)):
         click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
         price=click_price['y']
@@ -624,20 +717,22 @@ def update_greekvis(name, putcall,click_option,select_option,click_price):
 
 @app.callback(
     Output("widget3", "value"),
-    #Input('expiration_price', 'clickData'),
-    Input('expiration_price', 'selectedData')
+    Input('expiration_price', 'selectedData'),
+    Input('expiration_price_put', 'selectedData')
 )
 
-def update_widget3(selectedData):
+def update_widget3(selectedData,selectedData_put):
     #holder = []
     if(selectedData):
-        #holder.append(str(int(clickData["points"][0]["x"])))
-        #return selectedData
         holder=[]
         for x in selectedData["points"]:
-            holder.append({k:x[k] for k in ["x", "y"]})
+            holder.append({x[k] for k in ["x", "y"]})
+    if(selectedData_put):
+        holder_put=[]
+        for x in selectedData["points"]:
+            holder_put.append({x[k] for k in ["x", "y"]})
         #return json.dumps({k: selectedData["points"][0][k] for k in ["x", "y"]})
-        return str(holder)
+        return "CALL: "+str(holder)+ " PUT: "+str(holder_put)
     # if(value):
     #     for x in value["points"]:
     #         holder.append(json.dumps({k: x["points"][0][k] for k in ["x", "y"]}))
