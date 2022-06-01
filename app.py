@@ -3,6 +3,7 @@ import dash
 from dash import dcc
 from dash import html
 from dash.dependencies import Input, Output
+import dash_bootstrap_components as dbc
 import os
 import pandas as pd
 import plotly.express as px
@@ -459,7 +460,9 @@ def filter_option(clickData,name,putcall):
     return options
 # def get_price(clickDate):
 #     datetime.strptime(click['y'], "%Y-%m-%d %H:%M").date()
+
 app = dash.Dash(__name__, external_stylesheets=['https://codepen.io/chriddyp/pen/bWLwgP.css'])
+#app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
 server = app.server
 
 
@@ -645,7 +648,7 @@ def update_pnlvis(name,click_option,select_option,click_option_put,select_option
         holder=[]
         for x in select_option["points"]:
             holder.append({k:x[k] for k in ["x", "y"]})
-        option=filter_option(holder[0],name,"CA::")
+        option=filter_option(holder[0],name,"CALL")
         for i in holder[1:len(holder)]:
             s=filter_option(i,name,"CALL")
             option=pd.concat([option,s])
