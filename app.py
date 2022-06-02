@@ -12,6 +12,8 @@ import numpy as np
 import json
 from scipy import stats
 import sys
+
+#import dash_bootstrap_components as dbc
 # import panel as pn
 # pn.extension('vega')
 alt.data_transformers.disable_max_rows()
@@ -204,7 +206,9 @@ def OptionPriceVis(options,stockprice,date):
         y='symbol:N',
         x='mark:Q',
         color = putCall_color
-    )
+    ).properties(
+    width=280
+)
 
     return mark + expected
 
@@ -356,15 +360,19 @@ def Greeks_Vis(options,stockprice,date):
         y='symbol:N',
         x='delta:Q',
         tooltip = ['description','delta'],
-    )
+    ).properties(
+    width=280
+)
 
     theta_vis = alt.Chart(options).mark_bar(opacity=0.5).encode(
         y='symbol:N',
         x='theta:Q',
         tooltip = ['description','theta'],
-    )
+    ).properties(
+    width=280
+)
 
-    return delta_vis & theta_vis
+    return OptionPriceVis(options,stockprice,date)|delta_vis | theta_vis
 
 
 
@@ -461,7 +469,7 @@ def filter_option(clickData,name,putcall):
 #     datetime.strptime(click['y'], "%Y-%m-%d %H:%M").date()
 
 app = dash.Dash(__name__, external_stylesheets=['https://codepen.io/chriddyp/pen/bWLwgP.css'])
-#app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
+#app = dash.Dash(__name__, external_stylesheets=[dbc.themes.SANDSTONE])
 server = app.server
 
 
@@ -506,16 +514,16 @@ app.layout = html.Div([
         #dcc.Textarea(id='widget2'),
         dcc.Textarea(id='widget3'),
         html.P('Prediction result:'),
-        html.Div(className='row',children=[
-                html.Iframe(
-                    id='pricevis',
-                    style={'border-width': '0', 'width': '100%', 'height': '140px'},
-                    srcDoc=pricevis(options,stockprice,date)),
-                html.Iframe(
-                    id='greekvis',
-                    style={'border-width': '0', 'width': '100%', 'height': '200px'},
-                    srcDoc=greekvis(options,stockprice,date))
-    ]),
+        # html.Div(className='row',children=[
+        #         html.Iframe(
+        #             id='pricevis',
+        #             style={'border-width': '0', 'width': '100%', 'height': '140px'},
+        #             srcDoc=pricevis(options,stockprice,date)),
+        html.Iframe(
+            id='greekvis',
+            style={'border-width': '0', 'width': '130%', 'height': '200px'},
+            srcDoc=greekvis(options,stockprice,date)),
+    # ]),
         # html.Iframe(
         #     id='pricevis',
         #     style={'border-width': '0', 'width': '100%', 'height': '200px'},
@@ -582,46 +590,46 @@ def update_plot(b):
 #     #         holder.append(json.dumps({k: x["points"][0][k] for k in ["x", "y"]}))
 #     #     return str(list(set(holder)))
 
-@app.callback(
-    Output("pricevis", "srcDoc"),
-    Input('stock', 'value'),
-    Input('expiration_price', 'clickData'),
-    Input('expiration_price', 'selectedData'),
-    Input('expiration_price_put', 'clickData'),
-    Input('expiration_price_put', 'selectedData'),
-    Input('plot','clickData')
-    #Input('expiration_price', 'selectedData')
-)
-def update_pricevis(name,click_option,select_option,click_option_put,select_option_put,click_price):
-    # if(click_option):
-    #     click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
-    #     option=filter_option(click_option,name,putcall)
-    if(select_option):
-        holder=[]
-        for x in select_option["points"]:
-            holder.append({k:x[k] for k in ["x", "y"]})
-        option=filter_option(holder[0],name,"CALL")
-        for i in holder[1:len(holder)]:
-            s=filter_option(i,name,"CALL")
-            option=pd.concat([option,s])
-    if(select_option_put):
-        holder=[]
-        for x in select_option_put["points"]:
-            holder.append({k:x[k] for k in ["x", "y"]})
-        option_put=filter_option(holder[0],name,"PUT")
-        for i in holder[1:len(holder)]:
-            s=filter_option(i,name,"PUT")
-            option_put=pd.concat([option_put,s])
-    if((select_option is not None) & (select_option_put is not None)):
-        option=pd.concat([option,option_put])
-    elif(select_option_put is not None):
-        option=option_put
-    if((select_option is not None) & (click_price is not None)):
-        click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
-        price=click_price['y']
-        date_select=datetime.strptime(click_price['x'], "%Y-%m-%d %H:%M").date()
-        return pricevis(option,price,date_select)
-    return pricevis(options,stockprice,date)
+# @app.callback(
+#     Output("pricevis", "srcDoc"),
+#     Input('stock', 'value'),
+#     Input('expiration_price', 'clickData'),
+#     Input('expiration_price', 'selectedData'),
+#     Input('expiration_price_put', 'clickData'),
+#     Input('expiration_price_put', 'selectedData'),
+#     Input('plot','clickData')
+#     #Input('expiration_price', 'selectedData')
+# )
+# def update_pricevis(name,click_option,select_option,click_option_put,select_option_put,click_price):
+#     # if(click_option):
+#     #     click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
+#     #     option=filter_option(click_option,name,putcall)
+#     if(select_option):
+#         holder=[]
+#         for x in select_option["points"]:
+#             holder.append({k:x[k] for k in ["x", "y"]})
+#         option=filter_option(holder[0],name,"CALL")
+#         for i in holder[1:len(holder)]:
+#             s=filter_option(i,name,"CALL")
+#             option=pd.concat([option,s])
+#     if(select_option_put):
+#         holder=[]
+#         for x in select_option_put["points"]:
+#             holder.append({k:x[k] for k in ["x", "y"]})
+#         option_put=filter_option(holder[0],name,"PUT")
+#         for i in holder[1:len(holder)]:
+#             s=filter_option(i,name,"PUT")
+#             option_put=pd.concat([option_put,s])
+#     if((select_option is not None) & (select_option_put is not None)):
+#         option=pd.concat([option,option_put])
+#     elif(select_option_put is not None):
+#         option=option_put
+#     if((select_option is not None) & (click_price is not None)):
+#         click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
+#         price=click_price['y']
+#         date_select=datetime.strptime(click_price['x'], "%Y-%m-%d %H:%M").date()
+#         return pricevis(option,price,date_select)
+#     return pricevis(options,stockprice,date)
 # def update_pricevis(name, putcall,click_option,click_price):
 #     if((click_option is not None) & (click_price is not None)):
 #         click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
@@ -690,6 +698,7 @@ def update_pnlvis(name,click_option,select_option,click_option_put,select_option
     Input('plot','clickData')
 )
 def update_greekvis(name,click_option,select_option,click_option_put,select_option_put,click_price):
+    option=None
     if(select_option):
         holder=[]
         for x in select_option["points"]:
@@ -710,7 +719,7 @@ def update_greekvis(name,click_option,select_option,click_option_put,select_opti
         option=pd.concat([option,option_put])
     elif(select_option_put is not None):
         option=option_put
-    if((select_option is not None) & (click_price is not None)):
+    if((option is not None) & (click_price is not None)):
         click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
         price=click_price['y']
         date_select=datetime.strptime(click_price['x'], "%Y-%m-%d %H:%M").date()
@@ -724,17 +733,16 @@ def update_greekvis(name,click_option,select_option,click_option_put,select_opti
 )
 
 def update_widget3(selectedData,selectedData_put):
-    #holder = []
+    holder = []
+    holder_put=[]
     if(selectedData):
-        holder=[]
         for x in selectedData["points"]:
             holder.append({x[k] for k in ["x", "y"]})
     if(selectedData_put):
-        holder_put=[]
-        for x in selectedData["points"]:
+        for x in selectedData_put["points"]:
             holder_put.append({x[k] for k in ["x", "y"]})
         #return json.dumps({k: selectedData["points"][0][k] for k in ["x", "y"]})
-        return "CALL: "+str(holder)+ " PUT: "+str(holder_put)
+    return "CALL: "+str(holder)+ " PUT: "+str(holder_put)
     # if(value):
     #     for x in value["points"]:
     #         holder.append(json.dumps({k: x["points"][0][k] for k in ["x", "y"]}))
