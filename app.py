@@ -19,8 +19,8 @@ import sys
 alt.data_transformers.disable_max_rows()
 
 import datetime as dt
-date_min = dt.date(2022,4,18)
-date_max = dt.date(2022,5,3)
+#date_min = dt.date(2022,4,18)
+#date_max = dt.date(2022,5,3)
 
 
 # date=dt.date(2022,4,21)
@@ -435,7 +435,7 @@ def expiration_price(name="TSLA",callput="PUT"):
 # Fig for results
 name = 'TSLA'
 # date = dt.date.today()
-date = dt.date(2022,5,26)
+date = dt.date(2022,5,1)
 df = pd.read_csv('./data/{}/{}{}{}'.format(name, name, date,'close'))
 
 chart = alt.Chart(df)
@@ -467,6 +467,22 @@ def filter_option(clickData,name,putcall):
     return options
 # def get_price(clickDate):
 #     datetime.strptime(click['y'], "%Y-%m-%d %H:%M").date()
+def print_table(options):
+    option_table=options.iloc[:,[1,3,8,24,25,26,35]]
+    table=go.Table(
+        header=dict(
+            values=["put<br>call", "description", "Mark","delta",
+                    "gamma", "theta",
+                    "days<br>to<br>expiration"],
+            font=dict(size=10),
+            align="left"
+        ),
+        cells=dict(
+            values=[option_table[k].tolist() for k in option_table.columns[0:]],
+            align = "left")
+    )
+    return(go.Figure(table))
+
 
 app = dash.Dash(__name__, external_stylesheets=['https://codepen.io/chriddyp/pen/bWLwgP.css'])
 #app = dash.Dash(__name__, external_stylesheets=[dbc.themes.SANDSTONE])
@@ -486,7 +502,9 @@ app.layout = html.Div([
             id='stock', value='TSLA',
             options=[
             {'label': 'SPY', 'value': 'SPY'},
-            {'label': 'TSLA', 'value': 'TSLA'}]),
+            {'label': 'TSLA', 'value': 'TSLA'},
+            {'label': 'AAPL', 'value': 'AAPL'},
+            {'label': 'QQQ', 'value': 'QQQ'}]),
         # dcc.DatePickerSingle(
         #             id="date-single",
         #             min_date_allowed=date_min,
@@ -510,9 +528,10 @@ app.layout = html.Div([
         html.P('Click a future price for prediction'),
         dcc.Graph(figure=plot_selection_price(name="TSLA"),id="plot"),
         html.P('Options and future price selected:'),
-        dcc.Textarea(id='widget'),
+        dcc.Graph(figure=print_table(options),id="table"),
+        #dcc.Textarea(id='widget'),
         #dcc.Textarea(id='widget2'),
-        dcc.Textarea(id='widget3'),
+        #dcc.Textarea(id='widget3'),
         html.P('Prediction result:'),
         # html.Div(className='row',children=[
         #         html.Iframe(
@@ -548,13 +567,13 @@ app.layout = html.Div([
 # def update_output(date,value):
 #     return plot_altair(date,value)
 
-@app.callback(
-    Output("widget", "value"),
-    Input("plot", "clickData")
-)
-def update_widget(clickData):
-    if(clickData):
-        return str([clickData["points"][0][k] for k in ["x", "y"]])
+# @app.callback(
+#     Output("widget", "value"),
+#     Input("plot", "clickData")
+# )
+# def update_widget(clickData):
+#     if(clickData):
+#         return str([clickData["points"][0][k] for k in ["x", "y"]])
 
 @app.callback(
     Output("expiration_price", "figure"),
@@ -726,23 +745,23 @@ def update_greekvis(name,click_option,select_option,click_option_put,select_opti
         return greekvis(option,price,date_select)
     return greekvis(options,stockprice,date)
 
-@app.callback(
-    Output("widget3", "value"),
-    Input('expiration_price', 'selectedData'),
-    Input('expiration_price_put', 'selectedData')
-)
-
-def update_widget3(selectedData,selectedData_put):
-    holder = []
-    holder_put=[]
-    if(selectedData):
-        for x in selectedData["points"]:
-            holder.append({x[k] for k in ["x", "y"]})
-    if(selectedData_put):
-        for x in selectedData_put["points"]:
-            holder_put.append({x[k] for k in ["x", "y"]})
-        #return json.dumps({k: selectedData["points"][0][k] for k in ["x", "y"]})
-    return "CALL: "+str(holder)+ " PUT: "+str(holder_put)
+# @app.callback(
+#     Output("widget3", "value"),
+#     Input('expiration_price', 'selectedData'),
+#     Input('expiration_price_put', 'selectedData')
+# )
+#
+# def update_widget3(selectedData,selectedData_put):
+#     holder = []
+#     holder_put=[]
+#     if(selectedData):
+#         for x in selectedData["points"]:
+#             holder.append({x[k] for k in ["x", "y"]})
+#     if(selectedData_put):
+#         for x in selectedData_put["points"]:
+#             holder_put.append({x[k] for k in ["x", "y"]})
+#         #return json.dumps({k: selectedData["points"][0][k] for k in ["x", "y"]})
+#     return "CALL: "+str(holder)+ " PUT: "+str(holder_put)
     # if(value):
     #     for x in value["points"]:
     #         holder.append(json.dumps({k: x["points"][0][k] for k in ["x", "y"]}))
@@ -755,6 +774,41 @@ def update_widget3(selectedData,selectedData_put):
 
 def update_plot(name):
     return plot_selection_price(name)
+
+@app.callback(
+    Output("table", "figure"),
+    Input('stock', 'value'),
+    Input('expiration_price', 'clickData'),
+    Input('expiration_price', 'selectedData'),
+    Input('expiration_price_put', 'clickData'),
+    Input('expiration_price_put', 'selectedData'),
+)
+#
+def update_table(name,click_option,select_option,click_option_put,select_option_put):
+    option=None
+    if(select_option):
+        holder=[]
+        for x in select_option["points"]:
+            holder.append({k:x[k] for k in ["x", "y"]})
+        option=filter_option(holder[0],name,"CALL")
+        for i in holder[1:len(holder)]:
+            s=filter_option(i,name,"CALL")
+            option=pd.concat([option,s])
+    if(select_option_put):
+        holder=[]
+        for x in select_option_put["points"]:
+            holder.append({k:x[k] for k in ["x", "y"]})
+        option_put=filter_option(holder[0],name,"PUT")
+        for i in holder[1:len(holder)]:
+            s=filter_option(i,name,"PUT")
+            option_put=pd.concat([option_put,s])
+    if((select_option is not None) & (select_option_put is not None)):
+        option=pd.concat([option,option_put])
+    elif(select_option_put is not None):
+        option=option_put
+    if(option is not None):
+        return print_table(option)
+    return print_table(options)
 
 
 if __name__ == '__main__':
