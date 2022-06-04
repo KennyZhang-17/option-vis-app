@@ -2,6 +2,7 @@ import altair as alt
 import dash
 from dash import dcc
 from dash import html
+from dash import dash_table
 from dash.dependencies import Input, Output
 import os
 import pandas as pd
@@ -467,23 +468,54 @@ def filter_option(clickData,name,putcall):
     return options
 # def get_price(clickDate):
 #     datetime.strptime(click['y'], "%Y-%m-%d %H:%M").date()
-def print_table(options):
-    option_table=options.iloc[:,[1,3,8,24,25,26,35]]
-    table=go.Table(
-        header=dict(
-            values=["put<br>call", "description", "Mark","delta",
-                    "gamma", "theta",
-                    "days<br>to<br>expiration"],
-            font=dict(size=10),
-            align="left"
-        ),
-        cells=dict(
-            values=[option_table[k].tolist() for k in option_table.columns[0:]],
-            align = "left")
+# def print_table(options):
+#     option_table=options.iloc[:,[1,3,8,24,25,26,35]]
+#     table=go.Table(
+#         header=dict(
+#             values=["put<br>call", "description", "Mark","delta",
+#                     "gamma", "theta",
+#                     "days<br>to<br>expiration"],
+#             font=dict(size=10),
+#             align="left"
+#         ),
+#         cells=dict(
+#             values=[option_table[k].tolist() for k in option_table.columns[0:]],
+#             align = "left")
+#     )
+#     return(go.Figure(table))
+def print_options(options):
+    option_table=options.iloc[:,[1,3,8,23,24,25,35]]
+    table=dash_table.DataTable(id='option-table', data=option_table.to_dict('records'), columns=[{"name": i, "id": i} for i in option_table.columns])
+    return table
+
+# def print_price(stockprice,date):
+#     table=go.Table(
+#         header=dict(
+#             values=["Date", "Future Price"],
+#             font=dict(size=10),
+#             align="left"
+#         ),
+#         cells=dict(
+#             values=[date,stockprice],
+#             align = "left")
+#     )
+#     layout = go.Layout(
+#     height=200
+#     )
+#     return(go.Figure(table))
+
+def quantity_table(n):
+    table=dash_table.DataTable(
+        id='computed-table',
+        columns=[
+            {'name': 'Quantity', 'id': 'input-data'},
+        ],
+        data=[{'input-data': i*0+1} for i in range(n)],
+        editable=True,
+        #style_cell={'height': '60px'}
+        #style_cell={'backgroundColor': 'grey'}
     )
-    return(go.Figure(table))
-
-
+    return table
 app = dash.Dash(__name__, external_stylesheets=['https://codepen.io/chriddyp/pen/bWLwgP.css'])
 #app = dash.Dash(__name__, external_stylesheets=[dbc.themes.SANDSTONE])
 server = app.server
@@ -527,11 +559,24 @@ app.layout = html.Div([
         #     srcDoc=buy.to_html()),
         html.P('Click a future price for prediction'),
         dcc.Graph(figure=plot_selection_price(name="TSLA"),id="plot"),
-        html.P('Options and future price selected:'),
-        dcc.Graph(figure=print_table(options),id="table"),
+        html.P('You may change the quantity by typing numbers in the cell. Options selected:'),
+    #     html.Div([
+    #     html.Div(className='row',children=[dcc.Graph(figure=print_table(options),id="table")], style={'display': 'inline-block'}),
+    #     html.Div([quantity_table(n)], style={'display': 'inline-block','vertical-align':'350px'}),
+    #     #dcc.Graph(figure=print_table(options),id="table"),
+    # ]),
+        html.Div([
+        html.Div([print_options(options)], style={'display': 'inline-block'}),
+        html.Div([quantity_table(n)], style={'display': 'inline-block'}),
+        #dcc.Graph(figure=print_table(options),id="table"),
+    ]),
+    #     html.Div(children = [
+    #             dcc.Graph(figure=print_price(stockprice,date),id="price_table")
+    # ], style = {'display': 'inline-block', 'height': '400px'}),
         #dcc.Textarea(id='widget'),
-        #dcc.Textarea(id='widget2'),
-        #dcc.Textarea(id='widget3'),
+        html.P('Future date and price selected:'),
+        dcc.Textarea(id='widget1'),
+        dcc.Textarea(id='widget2'),
         html.P('Prediction result:'),
         # html.Div(className='row',children=[
         #         html.Iframe(
@@ -567,13 +612,21 @@ app.layout = html.Div([
 # def update_output(date,value):
 #     return plot_altair(date,value)
 
-# @app.callback(
-#     Output("widget", "value"),
-#     Input("plot", "clickData")
-# )
-# def update_widget(clickData):
-#     if(clickData):
-#         return str([clickData["points"][0][k] for k in ["x", "y"]])
+@app.callback(
+    Output("widget1", "value"),
+    Input("plot", "clickData")
+)
+def update_widget1(clickData):
+    if(clickData):
+        return str(clickData["points"][0]["x"])
+
+@app.callback(
+    Output("widget2", "value"),
+    Input("plot", "clickData")
+)
+def update_widget2(clickData):
+    if(clickData):
+        return str(clickData["points"][0]["y"])
 
 @app.callback(
     Output("expiration_price", "figure"),
@@ -776,7 +829,7 @@ def update_plot(name):
     return plot_selection_price(name)
 
 @app.callback(
-    Output("table", "figure"),
+    Output("option-table", "data"),
     Input('stock', 'value'),
     Input('expiration_price', 'clickData'),
     Input('expiration_price', 'selectedData'),
@@ -807,8 +860,78 @@ def update_table(name,click_option,select_option,click_option_put,select_option_
     elif(select_option_put is not None):
         option=option_put
     if(option is not None):
-        return print_table(option)
-    return print_table(options)
+        return option.iloc[:,[1,3,8,23,24,25,35]].to_dict(orient='records')
+    return options.iloc[:,[1,3,8,23,24,25,35]].to_dict(orient='records')
+
+# @app.callback(
+#     Output("table", "figure"),
+#     Input('stock', 'value'),
+#     Input('expiration_price', 'clickData'),
+#     Input('expiration_price', 'selectedData'),
+#     Input('expiration_price_put', 'clickData'),
+#     Input('expiration_price_put', 'selectedData'),
+# )
+# #
+# def update_table(name,click_option,select_option,click_option_put,select_option_put):
+#     option=None
+#     if(select_option):
+#         holder=[]
+#         for x in select_option["points"]:
+#             holder.append({k:x[k] for k in ["x", "y"]})
+#         option=filter_option(holder[0],name,"CALL")
+#         for i in holder[1:len(holder)]:
+#             s=filter_option(i,name,"CALL")
+#             option=pd.concat([option,s])
+#     if(select_option_put):
+#         holder=[]
+#         for x in select_option_put["points"]:
+#             holder.append({k:x[k] for k in ["x", "y"]})
+#         option_put=filter_option(holder[0],name,"PUT")
+#         for i in holder[1:len(holder)]:
+#             s=filter_option(i,name,"PUT")
+#             option_put=pd.concat([option_put,s])
+#     if((select_option is not None) & (select_option_put is not None)):
+#         option=pd.concat([option,option_put])
+#     elif(select_option_put is not None):
+#         option=option_put
+#     if(option is not None):
+#         return print_table(option)
+#     return print_table(options)
+
+@app.callback(
+    Output('computed-table', 'data'),
+    Input('expiration_price', 'clickData'),
+    Input('expiration_price', 'selectedData'),
+    Input('expiration_price_put', 'clickData'),
+    Input('expiration_price_put', 'selectedData'),
+    #Input('expiration_price', 'selectedData')
+)
+def update_quantity_table(click_option,select_option,click_option_put,select_option_put):
+    n=1
+    if(select_option):
+        holder=[]
+        for x in select_option["points"]:
+            holder.append({k:x[k] for k in ["x", "y"]})
+        option=filter_option(holder[0],name,"CALL")
+        for i in holder[1:len(holder)]:
+            s=filter_option(i,name,"CALL")
+            option=pd.concat([option,s])
+        n=len(option)
+    if(select_option_put):
+        holder=[]
+        for x in select_option_put["points"]:
+            holder.append({k:x[k] for k in ["x", "y"]})
+        option_put=filter_option(holder[0],name,"PUT")
+        for i in holder[1:len(holder)]:
+            s=filter_option(i,name,"PUT")
+            option_put=pd.concat([option_put,s])
+    if((select_option is not None) & (select_option_put is not None)):
+        option=pd.concat([option,option_put])
+        n=len(option)
+    elif(select_option_put is not None):
+        option=option_put
+        n=len(option)
+    return pd.DataFrame({'input-data':np.ones(n)}).to_dict(orient='records')
 
 
 if __name__ == '__main__':
