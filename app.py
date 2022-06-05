@@ -810,13 +810,14 @@ def update_table(name,click_option,select_option,click_option_put,select_option_
 
 @app.callback(
     Output('computed-table', 'data'),
+    Input('stock', 'value'),
     Input('expiration_price', 'clickData'),
     Input('expiration_price', 'selectedData'),
     Input('expiration_price_put', 'clickData'),
     Input('expiration_price_put', 'selectedData'),
     #Input('expiration_price', 'selectedData')
 )
-def update_quantity_table(click_option,select_option,click_option_put,select_option_put):
+def update_quantity_table(name,click_option,select_option,click_option_put,select_option_put):
     n=2
     if(select_option):
         holder=[]
