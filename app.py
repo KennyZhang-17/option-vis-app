@@ -14,6 +14,9 @@ import json
 from scipy import stats
 import sys
 
+from yahoo_fin import stock_info as si
+
+
 #import dash_bootstrap_components as dbc
 # import panel as pn
 # pn.extension('vega')
@@ -125,44 +128,75 @@ def option_stockprice_dates_DF(priceRange,dateRange,options):
     options['dates'] = options.apply(lambda df:dateRange,axis=1)
     newdf = options.explode('stockPrice').explode('dates')
     return newdf
+
+# Plotting functions
 def Greeks_Vis(options,stockprice,date):
     """
     options: dataframe of options (pandas dataframe)
     stockprice: prediction of the underlying stock price (number)
     date: prediction date (dt.date or dt.datetime)
     """
+    if (options is None):
+        return alt.Chart().mark_text()
 
     options['delta_theo'] = options.apply(lambda df: df.Num * greeks_theo('delta',df.putCall,stockprice,df.strikePrice,daysLeft(df.expirationDate,date),df.volatility),axis=1)
     options['theta_theo'] = options.apply(lambda df: df.Num * greeks_theo('theta',df.putCall,stockprice,df.strikePrice,daysLeft(df.expirationDate,date),df.volatility),axis=1)
     options['gamma_theo'] = options.apply(lambda df: df.Num * greeks_theo('gamma',df.putCall,stockprice,df.strikePrice,daysLeft(df.expirationDate,date),df.volatility),axis=1)
 
+    width = 280
 
     delta_vis = alt.Chart(options).mark_bar().encode(
+        alt.Opacity('Num:O'),
         y='symbol:N',
         x='delta_theo:Q',
-        tooltip = ['description','delta_theo','Num'],
-        color=alt.Color('Num:O')
-    ).properties(
-    width=280
-)
+        # tooltip = ['description','delta_theo','Num'],
+    ).properties(width=width)
+    nearest1 = alt.selection(type='single', nearest=True, on='mouseover',
+                            fields=['symbol'])
+    tooltip_selectors1 = alt.Chart(options).mark_point().encode(
+        y="symbol:N",
+        opacity=alt.value(0),
+        tooltip = ['description:N','delta_theo:Q','Num:Q'],
+    ).add_selection(
+        nearest1
+    )
+    delta_vis = (delta_vis + tooltip_selectors1)
+
 
     theta_vis = alt.Chart(options).mark_bar().encode(
+        alt.Opacity('Num:O'),
         y='symbol:N',
         x='theta_theo:Q',
         tooltip = ['description','theta_theo','Num'],
-        color=alt.Color('Num:O')
-    ).properties(
-    width=280
-)
+    ).properties(width=width)
+    nearest2 = alt.selection(type='single', nearest=True, on='mouseover',
+                            fields=['symbol'])
+    tooltip_selectors2 = alt.Chart(options).mark_point().encode(
+        y="symbol:N",
+        opacity=alt.value(0),
+        tooltip = ['description:N','theta_theo:Q','Num:Q'],
+    ).add_selection(
+        nearest2
+    )
+    theta_vis = (theta_vis+tooltip_selectors2)
 
     gamma_vis = alt.Chart(options).mark_bar(opacity=0.5).encode(
+        alt.Opacity('Num:O'),
         y='symbol:N',
         x='gamma_theo:Q',
         tooltip = ['description','gamma_theo','Num'],
-        color=alt.Color('Num:O')
-    ).properties(
-    width=280
-)
+    ).properties(width=width)
+    nearest3 = alt.selection(type='single', nearest=True, on='mouseover',
+                            fields=['symbol'])
+    tooltip_selectors3 = alt.Chart(options).mark_point().encode(
+        y="symbol:N",
+        opacity=alt.value(0),
+        tooltip = ['description:N','gamma_theo:Q','Num:Q'],
+    ).add_selection(
+        nearest3
+    )
+    gamma_vis = (gamma_vis+ tooltip_selectors3)
+
     return delta_vis | theta_vis | gamma_vis
 
 
@@ -172,7 +206,8 @@ def Option_PnL_Vis(options,date,centerPrice):
     date: date of PnL  (dt.date or dt.datetime)
     centerPrice: The visualization will draw the PnL diagram around centerPrice
     """
-
+    if (options is None):
+        return alt.Chart().mark_text()
 
 
     def option_stockprice_DF(centerPrice,options,stepNum=500,percent=0.8):
@@ -232,7 +267,6 @@ def Option_PnL_Vis(options,date,centerPrice):
     )
 
     # https://altair-viz.github.io/gallery/multiline_tooltip.html
-
     nearest = alt.selection(type='single', nearest=True, on='mouseover',
                             fields=['stockPrice'], empty='none')
 
@@ -270,6 +304,8 @@ def OptionPriceVis(options,stockprice,date):
     stockprice: prediction of the underlying stock price (number)
     date: prediction date (dt.date or dt.datetime)
     """
+    if (options is None):
+        return alt.Chart().mark_text()
 
     options['ExpectedPrice'] = options.apply(lambda df: optionpriceRow(df,stockprice,date),axis=1)
 
@@ -337,6 +373,10 @@ def Greek_Table_Vis(options,stockprice,days=30,greek='delta'):
     priceRange: list of prices
     greek: greek name to visualize, 'delta','theta','gamma'
     """
+    if (options is None):
+        return alt.Chart().mark_text()
+
+
     priceRange = linear_price_range(stockprice,stepNum=20,percent=0.2)
     dateRange = [1000*int((dt.date.today()+dt.timedelta(days=i)).strftime('%s')) for i in range(days)]
 
@@ -360,14 +400,48 @@ def Greek_Table_Vis(options,stockprice,days=30,greek='delta'):
         alt.Y('stockPrice:O',scale=alt.Scale(zero=False),sort='descending'),
         alt.Color('{}_theo:Q'.format(greek), scale=alt.Scale(scheme='purpleblue')),
         tooltip=['dates:T','stockPrice','delta_theo','theta_theo','gamma_theo','dates']
-    ).properties(width=600)
+    ).properties(width=500)
 
     return a
-# Fig for selection price
 
+def PnL_Table_Vis(options,lastprice,days=30):
+    """
+    Visualize PnL in {days} days
+    options: dateframe
+    days: positive integer
+    lastprice: priceRange center
+    """
+    priceRange = linear_price_range(lastprice,stepNum=20,percent=0.2)
+    dateRange = [1000*int((dt.date.today()+dt.timedelta(days=i)).strftime('%s')) for i in range(days)]
+    
+
+    optionss = option_stockprice_dates_DF(priceRange,dateRange,options)
+
+
+    def calculatePnL(optionss):
+        optionss['ExpectedPrice'] = optionss.apply(lambda df: optionprice(df.putCall,df.stockPrice,df.strikePrice,daysLeft(df.expirationDate,dt.datetime.fromtimestamp(df.dates/1000)),df.volatility),axis=1)
+        optionss['Return'] = optionss.apply(lambda df: 100 * (df.ExpectedPrice - df.mark)*df.Num,axis=1)
+
+    calculatePnL(optionss)
+
+    PnL_DF = optionss[['stockPrice','dates','Return']].groupby(['stockPrice','dates']).sum().reset_index()
+
+
+    # https://altair-viz.github.io/user_guide/times_and_dates.html 
+    # https://altair-viz.github.io/user_guide/transform/timeunit.html#user-guide-timeunit-transform
+
+
+    res = alt.Chart(PnL_DF).mark_rect().encode(
+        alt.X('monthdate(dates):O'),
+        alt.Y('stockPrice:O',scale=alt.Scale(zero=False),sort='descending'),
+        alt.Color('Return:Q', scale=alt.Scale(scheme='purpleblue')),
+        tooltip=['dates:T','stockPrice','dates','Return']
+    ).properties(width=500)
+    return res
+
+# Plotly fig for selection price
 def plot_selection_price(name="TSLA"):
     df = pd.read_csv('./data/{}/{}'.format(name,name+'_PriceHistory'))
-    #df = pd.read_csv('https://raw.githubusercontent.com/plotly/datasets/master/finance-charts-apple.csv')
     df['datetime']=[datetime.fromtimestamp(i/1000) for i in df['datetime']]
     fig = go.Figure(data=[go.Candlestick(x=df['datetime'],
                     open=df['open'],
@@ -384,45 +458,22 @@ def plot_selection_price(name="TSLA"):
         .data
     )
     return fig
-# name = 'TSLA'
-# # date = dt.date.today()
-# date = dt.date(2022,5,1)
-# df=pd.read_csv('./{}/{}{}{}'.format(name, name, date,'close'))
-# # Option Selector
-# chart = alt.Chart(df)#.encode(color=putCall_color)
-# putCall_color = alt.Color('putCall:N',legend=None,scale=alt.Scale(domain=['PUT','CALL'],range=['red','green']))
-# width = 500
-#
-# buy_selector = alt.selection_multi(name="buy")
-#
-# buycolor = alt.condition(buy_selector,
-#                 putCall_color,
-#                 alt.value('lightgray'))
-# buy = chart.mark_point(size=150).encode(
-#     alt.X('strikePrice:Q'),
-#     alt.Y('putCall:N'),
-#     color = buycolor
-#     ).add_selection(buy_selector).interactive().properties(width=width)
-# vega_pane = pn.pane.Vega(buy, debounce=10)
 
-
+# Plotly scatter plot to select options
 def expiration_price(name="TSLA",callput="PUT"):
-    date = dt.date(2022,5,1)
     df = pd.read_csv('./data/{}/{}{}{}'.format(name, name, date,'close'))
     df = df[df["putCall"]==callput]
     df['expirationDate']=[datetime.fromtimestamp(i/1000) for i in df['expirationDate']]
-    df = df[df["expirationDate"].dt.date<dt.date(2023,1,1)]
     fig = px.scatter(df, x="strikePrice", y="expirationDate",title = "Select "+callput)
+    fig.update_yaxes(type='category',tickformat="%Y\n%b")#tickformat not functioning in category type
     fig.update_layout(clickmode='event+select')
     return fig
 
-# Initialize
-#fig=plot_selection_price(name="TSLA")
+# Initialize data for the website
 
 # Fig for results
 name = 'TSLA'
-# date = dt.date.today()
-date = dt.date(2022,5,1)
+date = dt.date(2022,6,4)
 df = pd.read_csv('./data/{}/{}{}{}'.format(name, name, date,'close'))
 
 chart = alt.Chart(df)
@@ -433,7 +484,8 @@ num=np.ones(len(options))
 options['Num']=num
 stockprice = 700
 
-date = dt.date(2022,6,4)
+
+# Wrap plotting functions to return html
 def pricevis(options,stockprice,date):
     return OptionPriceVis(options,stockprice,date).to_html()
 
@@ -446,55 +498,16 @@ def greekvis(options,stockprice,date):
 def greektablevis(options,stockprice):
     return Greek_Table_Vis(options,stockprice,days=30).to_html()
 
-def filter_option(clickData,name,putcall):
-    date = dt.date(2022,5,1)
-    df = pd.read_csv('./data/{}/{}{}{}'.format(name, name, date,'close'))
-    #df['expirationDate2']=[datetime.fromtimestamp(i/1000).date() for i in df['expirationDate']]
-    expir=[datetime.fromtimestamp(i/1000).date() for i in df['expirationDate']]
-    x=clickData['x']
-    y=clickData['y']
-    options=df[(df['strikePrice']==x) & ([(str(i) in y) for i in expir] )]
-    options=options[options['putCall']==putcall]
-    options['Num']=np.ones(len(options))
-    return options
-# def get_price(clickDate):
-#     datetime.strptime(click['y'], "%Y-%m-%d %H:%M").date()
-# def print_table(options):
-#     option_table=options.iloc[:,[1,3,8,24,25,26,35]]
-#     table=go.Table(
-#         header=dict(
-#             values=["put<br>call", "description", "Mark","delta",
-#                     "gamma", "theta",
-#                     "days<br>to<br>expiration"],
-#             font=dict(size=10),
-#             align="left"
-#         ),
-#         cells=dict(
-#             values=[option_table[k].tolist() for k in option_table.columns[0:]],
-#             align = "left")
-#     )
-#     return(go.Figure(table))
+def PnLtablevis(options,stockprice):
+    return PnL_Table_Vis(options,stockprice,days=30).to_html()
+
+# Table for print selected option information
 def print_options(options):
-    option_table=options.iloc[:,[1,3,8,23,24,25,35]]
+    option_table=options.iloc[:,[1,3,8,23,24,25,35]] # only display these columns
     table=dash_table.DataTable(id='option-table', data=option_table.to_dict('records'), columns=[{"name": i, "id": i} for i in option_table.columns])
     return table
 
-# def print_price(stockprice,date):
-#     table=go.Table(
-#         header=dict(
-#             values=["Date", "Future Price"],
-#             font=dict(size=10),
-#             align="left"
-#         ),
-#         cells=dict(
-#             values=[date,stockprice],
-#             align = "left")
-#     )
-#     layout = go.Layout(
-#     height=200
-#     )
-#     return(go.Figure(table))
-
+# Table for input number of quantities
 def quantity_table(n):
     table=dash_table.DataTable(
         id='computed-table',
@@ -503,274 +516,21 @@ def quantity_table(n):
         ],
         data=[{'input-data': i*0+1} for i in range(n)],
         editable=True,
-        #style_cell={'height': '60px'}
-        #style_cell={'backgroundColor': 'grey'}
     )
     return table
-app = dash.Dash(__name__, external_stylesheets=['https://codepen.io/chriddyp/pen/bWLwgP.css'])
-#app = dash.Dash(__name__, external_stylesheets=[dbc.themes.SANDSTONE])
-server = app.server
 
+# helper function to get option from click data
+def filter_option(clickData,name,putcall):
+    df = pd.read_csv('./data/{}/{}{}{}'.format(name, name, date,'close'))
+    expir=[datetime.fromtimestamp(i/1000).date() for i in df['expirationDate']]
+    x=clickData['x']
+    y=clickData['y']
+    options=df[(df['strikePrice']==x) & ([(str(i) in y) for i in expir] )]
+    options=options[options['putCall']==putcall]
+    options['Num']=np.ones(len(options))
+    return options
 
-app.layout = html.Div([
-        html.H1('Option Visualization Tool'),
-        html.P('Developed by Yang Yu and Kenny Zhang from University of Washington'),
-        # dcc.Dropdown(
-        #     id='putcall', value='PUT',
-        #     options=[
-        #     {'label': 'PUT', 'value': 'PUT'},
-        #     {'label': 'CALL', 'value': 'CALL'}]),
-        html.P('Select a stock for trading'),
-        dcc.Dropdown(
-            id='stock', value='TSLA',
-            options=[
-            {'label': 'SPY', 'value': 'SPY'},
-            {'label': 'TSLA', 'value': 'TSLA'},
-            {'label': 'AAPL', 'value': 'AAPL'},
-            {'label': 'QQQ', 'value': 'QQQ'}]),
-        # dcc.DatePickerSingle(
-        #             id="date-single",
-        #             min_date_allowed=date_min,
-        #             max_date_allowed=date_max,
-        #             initial_visible_month=dt.date(2022, 4, 1),
-        #             date=dt.date(2022, 4, 21)),
-        # html.Iframe(
-        #     id='scatter',
-        #     style={'border-width': '0', 'width': '100%', 'height': '400px'},
-        #     srcDoc=plot_altair(date=dt.date(2022, 4, 21),name='SPY')),
-        html.P('Click option(s) for trading'),
-        html.Div(className='row',children=[
-        dcc.Graph(figure=expiration_price(name="TSLA",callput="CALL"),id="expiration_price",style={'display': 'inline-block'}),
-        dcc.Graph(figure=expiration_price(name="TSLA",callput="PUT"),id="expiration_price_put",style={'display': 'inline-block'}),
-    ]),
-        #dcc.Graph(figure=expiration_price(name="TSLA",callput="CALL"),id="expiration_price"),
-        # html.Iframe(
-        #     id='option_selector',
-        #     style={'border-width': '0', 'width': '100%', 'height': '400px'},
-        #     srcDoc=buy.to_html()),
-        html.P('Click a future price for prediction'),
-        dcc.Graph(figure=plot_selection_price(name="TSLA"),id="plot"),
-        html.P('You may change the quantity by typing numbers in the cell and press enter. Options selected:'),
-    #     html.Div([
-    #     html.Div(className='row',children=[dcc.Graph(figure=print_table(options),id="table")], style={'display': 'inline-block'}),
-    #     html.Div([quantity_table(n)], style={'display': 'inline-block','vertical-align':'350px'}),
-    #     #dcc.Graph(figure=print_table(options),id="table"),
-    # ]),
-        html.Div([
-        html.Div([print_options(options)], style={'display': 'inline-block'}),
-        html.Div([quantity_table(n)], style={'display': 'inline-block'}),
-        #dcc.Graph(figure=print_table(options),id="table"),
-    ]),
-    #     html.Div(children = [
-    #             dcc.Graph(figure=print_price(stockprice,date),id="price_table")
-    # ], style = {'display': 'inline-block', 'height': '400px'}),
-        #dcc.Textarea(id='widget'),
-        html.P('Future date and price selected:'),
-        dcc.Textarea(id='widget1'),
-        dcc.Textarea(id='widget2'),
-        #dcc.Textarea(id='widget3'),
-        html.P('Prediction result:'),
-        # html.Div(className='row',children=[
-        #         html.Iframe(
-        #             id='pricevis',
-        #             style={'border-width': '0', 'width': '100%', 'height': '140px'},
-        #             srcDoc=pricevis(options,stockprice,date)),
-        # html.Iframe(
-        #     id='greekvis',
-        #     style={'border-width': '0', 'width': '130%', 'height': '200px'},
-        #     srcDoc=greekvis(options,stockprice,date)),
-    # ]),
-        html.Iframe(
-            id='pricevis',
-            style={'border-width': '0', 'width': '100%', 'height': '200px'},
-            srcDoc=pricevis(options,stockprice,date)),
-        html.Iframe(
-            id='pnlvis',
-            style={'border-width': '0', 'width': '100%', 'height': '400px'},
-            srcDoc=pnlvis(options,stockprice,date)),
-        html.Iframe(
-            id='greekvis',
-            style={'border-width': '0', 'width': '100%', 'height': '200px'},
-            srcDoc=greekvis(options,stockprice,date)),
-        html.Iframe(
-            id='greektablevis',
-            style={'border-width': '0', 'width': '100%', 'height': '500px'},
-            srcDoc=greektablevis(options,stockprice)),
-        # html.Iframe(
-        #     id='greekvis',
-        #     style={'border-width': '0', 'width': '100%', 'height': '200px'},
-        #     srcDoc=greekvis(options,stockprice,date)),
-        ])
-
-# @app.callback(
-#     Output('scatter', 'srcDoc'),
-#     Input('date-single', 'date'),
-#     Input('stock', 'value')
-#     #nput('pc', 'value'),
-#     )
-#
-# def update_output(date,value):
-#     return plot_altair(date,value)
-
-@app.callback(
-    Output("widget1", "value"),
-    Input("plot", "clickData")
-)
-def update_widget1(clickData):
-    if(clickData):
-        return str(clickData["points"][0]["x"])
-
-@app.callback(
-    Output("widget2", "value"),
-    Input("plot", "clickData")
-)
-def update_widget2(clickData):
-    if(clickData):
-        return str(clickData["points"][0]["y"])
-
-@app.callback(
-    Output("expiration_price", "figure"),
-#    Input('putcall', 'value'),
-    Input('stock', 'value')
-)
-
-def update_plot(b):
-    return expiration_price(name=b,callput="CALL")
-
-@app.callback(
-    Output("expiration_price_put", "figure"),
-#    Input('putcall', 'value'),
-    Input('stock', 'value')
-)
-
-def update_plot(b):
-    return expiration_price(name=b,callput="PUT")
-
-# @app.callback(
-#     Output("widget2", "value"),
-#     Input('expiration_price', 'clickData'),
-#     #Input('expiration_price', 'selectedData')
-# )
-#
-# def update_widget2(clickData):
-#     #holder = []
-#     if(clickData):
-#         #holder.append(str(int(clickData["points"][0]["x"])))
-#         return json.dumps({k: clickData["points"][0][k] for k in ["x", "y"]})
-#     # if(value):
-#     #     for x in value["points"]:
-#     #         holder.append(json.dumps({k: x["points"][0][k] for k in ["x", "y"]}))
-#     #     return str(list(set(holder)))
-
-@app.callback(
-    Output("pricevis", "srcDoc"),
-    Input('stock', 'value'),
-    Input('expiration_price', 'clickData'),
-    Input('expiration_price', 'selectedData'),
-    Input('expiration_price_put', 'clickData'),
-    Input('expiration_price_put', 'selectedData'),
-    Input('plot','clickData'),
-    Input("computed-table", "data_timestamp"),
-    State('computed-table', 'data')
-    #Input('expiration_price', 'selectedData')
-)
-def update_pricevis(name,click_option,select_option,click_option_put,select_option_put,click_price,timestamp,rows):
-    # if(click_option):
-    #     click_option=json.loads(json.dumps({k: click_option["points"][0][k] for k in ["x", "y"]}))
-    #     option=filter_option(click_option,name,putcall)
-    if(select_option):
-        holder=[]
-        for x in select_option["points"]:
-            holder.append({k:x[k] for k in ["x", "y"]})
-        option=filter_option(holder[0],name,"CALL")
-        for i in holder[1:len(holder)]:
-            s=filter_option(i,name,"CALL")
-            option=pd.concat([option,s])
-    if(select_option_put):
-        holder=[]
-        for x in select_option_put["points"]:
-            holder.append({k:x[k] for k in ["x", "y"]})
-        option_put=filter_option(holder[0],name,"PUT")
-        for i in holder[1:len(holder)]:
-            s=filter_option(i,name,"PUT")
-            option_put=pd.concat([option_put,s])
-    if((select_option is not None) & (select_option_put is not None)):
-        option=pd.concat([option,option_put])
-    elif(select_option_put is not None):
-        option=option_put
-    if((select_option is not None) & (click_price is not None)):
-        click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
-        price=click_price['y']
-        date_select=datetime.strptime(click_price['x'], "%Y-%m-%d %H:%M").date()
-        if(rows):
-            num=[]
-            for row in rows:
-                num.append(int(row['input-data']))
-            if(len(num)==len(option)):
-                option['Num']=num
-        return pricevis(option,price,date_select)
-    return pricevis(options,stockprice,date)
-
-
-@app.callback(
-    Output("pnlvis", "srcDoc"),
-    Input('stock', 'value'),
-    Input('expiration_price', 'clickData'),
-    Input('expiration_price', 'selectedData'),
-    Input('expiration_price_put', 'clickData'),
-    Input('expiration_price_put', 'selectedData'),
-    Input('plot','clickData'),
-    Input("computed-table", "data_timestamp"),
-    State('computed-table', 'data')
-    #Input('expiration_price', 'selectedData')
-)
-def update_pnlvis(name,click_option,select_option,click_option_put,select_option_put,click_price,timestamp,rows):
-    if(select_option):
-        holder=[]
-        for x in select_option["points"]:
-            holder.append({k:x[k] for k in ["x", "y"]})
-        option=filter_option(holder[0],name,"CALL")
-        for i in holder[1:len(holder)]:
-            s=filter_option(i,name,"CALL")
-            option=pd.concat([option,s])
-    if(select_option_put):
-        holder=[]
-        for x in select_option_put["points"]:
-            holder.append({k:x[k] for k in ["x", "y"]})
-        option_put=filter_option(holder[0],name,"PUT")
-        for i in holder[1:len(holder)]:
-            s=filter_option(i,name,"PUT")
-            option_put=pd.concat([option_put,s])
-    if((select_option is not None) & (select_option_put is not None)):
-        option=pd.concat([option,option_put])
-    elif(select_option_put is not None):
-        option=option_put
-    if((select_option is not None) & (click_price is not None)):
-        click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
-        price=click_price['y']
-        date_select=datetime.strptime(click_price['x'], "%Y-%m-%d %H:%M").date()
-        if(rows):
-            num=[]
-            for row in rows:
-                num.append(int(row['input-data']))
-            if(len(num)==len(option)):
-                option['Num']=num
-        return pnlvis(option,price,date_select)
-    return pnlvis(options,stockprice,date)
-
-
-@app.callback(
-    Output("greekvis", "srcDoc"),
-    Input('stock', 'value'),
-    Input('expiration_price', 'clickData'),
-    Input('expiration_price', 'selectedData'),
-    Input('expiration_price_put', 'clickData'),
-    Input('expiration_price_put', 'selectedData'),
-    Input('plot','clickData'),
-    Input("computed-table", "data_timestamp"),
-    State('computed-table', 'data')
-)
-def update_greekvis(name,click_option,select_option,click_option_put,select_option_put,click_price,timestamp,rows):
+def get_option(name,select_option=None,select_option_put=None):
     option=None
     if(select_option):
         holder=[]
@@ -792,6 +552,182 @@ def update_greekvis(name,click_option,select_option,click_option_put,select_opti
         option=pd.concat([option,option_put])
     elif(select_option_put is not None):
         option=option_put
+    return option
+
+# style sheet
+app = dash.Dash(__name__, external_stylesheets=['https://codepen.io/chriddyp/pen/bWLwgP.css'])
+server = app.server
+
+# App layout
+app.layout = html.Div([
+        html.H1('Option Visualization Tool'),
+        html.P('Developed by Yang Yu and Kenny Zhang from University of Washington'),
+        html.P('Instruction: 1. Select a stock.         2. Select option(s). Adjust option quantities if neeeded.        3. Click the candle chart to select a date and price'),
+        html.Hr(),
+        html.P('Select a stock for trading'),
+        dcc.Dropdown(
+            id='stock', value='TSLA',
+            options=[
+            {'label': 'SPY', 'value': 'SPY'},
+            {'label': 'TSLA', 'value': 'TSLA'},
+            {'label': 'AAPL', 'value': 'AAPL'},
+            {'label': 'QQQ', 'value': 'QQQ'}]),
+        html.P('Click option(s) for trading: (option data on June 4, 2022)'),
+        html.Div(className='row',children=[
+        dcc.Graph(figure=expiration_price(name="TSLA",callput="CALL"),id="expiration_price",style={'display': 'inline-block'}),
+        dcc.Graph(figure=expiration_price(name="TSLA",callput="PUT"),id="expiration_price_put",style={'display': 'inline-block'}),
+    ]),
+        
+        html.P('You may change the quantity by typing numbers in the cell and press enter. Options selected:'),
+        html.Div([
+        html.Div([print_options(options)], style={'display': 'inline-block'}),
+        html.Div([quantity_table(n)], style={'display': 'inline-block'}),
+    ]),
+        html.Hr(),
+        html.P('Click a future price for prediction'),
+        html.Div([dcc.Graph(figure=plot_selection_price(name="TSLA"),id="plot")]),
+
+        html.Div(id='widget1'),
+
+        html.Iframe(
+            id='pricevis',
+            style={'border-width': '0', 'width': '100%', 'height': '200px'},
+            srcDoc=pricevis(options,stockprice,date)),
+        html.Iframe(
+            id='greekvis',
+            style={'border-width': '0', 'width': '100%', 'height': '200px'},
+            srcDoc=greekvis(options,stockprice,date)),
+
+        html.Hr(),
+
+        # html.P('Choose a date to see option prices / PnL curve(s) of stock prices'),
+        html.Div(id='widget2'),
+        html.Iframe(
+            id='pnlvis',
+            style={'border-width': '0', 'width': '100%', 'height': '400px'},
+            srcDoc=pnlvis(options,stockprice,date)),
+
+        html.Hr(),
+
+        html.P('Risk management and PnL for selected options'),
+        html.Iframe(
+            id='greektablevis',
+            style={'border-width': '0', 'width': '50%', 'height': '500px','display': 'inline-block'},
+            srcDoc=greektablevis(options,stockprice)),
+        html.Iframe(
+            id='PnLtablevis',
+            style={'border-width': '0', 'width': '50%', 'height': '500px','display': 'inline-block'},
+            srcDoc=PnLtablevis(options,stockprice)),
+        
+        # , style={'display': 'inline-block'})
+        
+
+        ])
+
+
+
+# call back for display future price and date selection
+@app.callback(
+    Output("widget1", "children"),
+    Input("plot", "clickData")
+)
+def update_widget1(clickData):
+    if(clickData):
+        return 'Prediction result for date={} & price={}:'.format(str(clickData["points"][0]["x"]), str(clickData["points"][0]["y"]))
+    else:
+        return 'Future date and price NOT selected yet. Please click the candle chart to select a date and price'
+
+
+@app.callback(
+    Output("widget2", "children"),
+    Input("plot", "clickData")
+)
+def update_widget2(clickData):
+    if(clickData):
+        return 'Prediction result for date={}:'.format(str(clickData["points"][0]["x"]))
+    else:
+        return 'Future date NOT selected yet. Please click the candle chart to select a date'
+
+
+# callback to display options (call) based on stock selected
+@app.callback(
+    Output("expiration_price", "figure"),
+    Input('stock', 'value')
+)
+
+def update_plot(b):
+    return expiration_price(name=b,callput="CALL")
+
+# callback to display options (put) based on stock selected
+@app.callback(
+    Output("expiration_price_put", "figure"),
+    Input('stock', 'value')
+)
+
+def update_plot(b):
+    return expiration_price(name=b,callput="PUT")
+
+# callback to update prediction plots
+@app.callback(
+    Output("pricevis", "srcDoc"),
+    State('stock', 'value'), # stock selected
+    Input('expiration_price', 'selectedData'), # option (call) selected
+    Input('expiration_price_put', 'selectedData'), # option (put) selected
+    Input('plot','clickData'), # future price and expiration selected
+    Input("computed-table", "data_timestamp"), # input quantities
+    State('computed-table', 'data')
+)
+def update_pricevis(name,select_option,select_option_put,click_price,timestamp,rows):
+    option=get_option(name,select_option,select_option_put)
+    if((option is not None) & (click_price is not None)):
+        click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
+        price=click_price['y']
+        date_select=datetime.strptime(click_price['x'], "%Y-%m-%d %H:%M").date()
+        if(rows):
+            num=[]
+            for row in rows:
+                num.append(int(row['input-data']))
+            if(len(num)==len(option)):
+                option['Num']=num
+        return pricevis(option,price,date_select)
+
+
+
+@app.callback(
+    Output("pnlvis", "srcDoc"),
+    State('stock', 'value'),
+    Input('expiration_price', 'selectedData'),
+    Input('expiration_price_put', 'selectedData'),
+    Input('plot','clickData'),
+    Input("computed-table", "data_timestamp"),
+    State('computed-table', 'data')
+)
+def update_pnlvis(name,select_option,select_option_put,click_price,timestamp,rows):
+    option=get_option(name,select_option,select_option_put)
+    if((option is not None) & (click_price is not None)):
+        click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
+        price=click_price['y']
+        date_select=datetime.strptime(click_price['x'], "%Y-%m-%d %H:%M").date()
+        if(rows):
+            num=[]
+            for row in rows:
+                num.append(int(row['input-data']))
+            if(len(num)==len(option)):
+                option['Num']=num
+        return pnlvis(option,price,date_select)
+
+
+@app.callback(
+    Output("greekvis", "srcDoc"),
+    State('stock', 'value'),
+    Input('expiration_price', 'selectedData'),
+    Input('expiration_price_put', 'selectedData'),
+    Input('plot','clickData'),
+    Input("computed-table", "data_timestamp"),
+    State('computed-table', 'data')
+)
+def update_greekvis(name,select_option,select_option_put,click_price,timestamp,rows):
+    option=get_option(name,select_option,select_option_put)
     if((option is not None) & (click_price is not None)):
         click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
         price=click_price['y']
@@ -803,74 +739,43 @@ def update_greekvis(name,click_option,select_option,click_option_put,select_opti
             if(len(num)==len(option)):
                 option['Num']=num
         return greekvis(option,price,date_select)
-    return greekvis(options,stockprice,date)
 
 @app.callback(
     Output("greektablevis", "srcDoc"),
-    Input('stock', 'value'),
-    Input('expiration_price', 'clickData'),
+    State('stock', 'value'),
     Input('expiration_price', 'selectedData'),
-    Input('expiration_price_put', 'clickData'),
     Input('expiration_price_put', 'selectedData'),
-    Input('plot','clickData'),
     Input("computed-table", "data_timestamp"),
     State('computed-table', 'data')
 )
-def update_greekvis(name,click_option,select_option,click_option_put,select_option_put,click_price,timestamp,rows):
-    option=None
-    if(select_option):
-        holder=[]
-        for x in select_option["points"]:
-            holder.append({k:x[k] for k in ["x", "y"]})
-        option=filter_option(holder[0],name,"CALL")
-        for i in holder[1:len(holder)]:
-            s=filter_option(i,name,"CALL")
-            option=pd.concat([option,s])
-    if(select_option_put):
-        holder=[]
-        for x in select_option_put["points"]:
-            holder.append({k:x[k] for k in ["x", "y"]})
-        option_put=filter_option(holder[0],name,"PUT")
-        for i in holder[1:len(holder)]:
-            s=filter_option(i,name,"PUT")
-            option_put=pd.concat([option_put,s])
-    if((select_option is not None) & (select_option_put is not None)):
-        option=pd.concat([option,option_put])
-    elif(select_option_put is not None):
-        option=option_put
-    if((option is not None) & (click_price is not None)):
-        click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
-        price=click_price['y']
-        #date_select=datetime.strptime(click_price['x'], "%Y-%m-%d %H:%M").date()
-        if(rows):
-            num=[]
-            for row in rows:
-                num.append(int(row['input-data']))
-            if(len(num)==len(option)):
-                option['Num']=num
-        return greektablevis(option,price)
-    return greektablevis(options,stockprice)
-# @app.callback(
-#     Output("widget3", "value"),
-#     Input('expiration_price', 'selectedData'),
-#     Input('expiration_price_put', 'selectedData')
-# )
-#
-# def update_widget3(selectedData,selectedData_put):
-#     holder = []
-#     holder_put=[]
-#     if(selectedData):
-#         for x in selectedData["points"]:
-#             holder.append({x[k] for k in ["x", "y"]})
-#     if(selectedData_put):
-#         for x in selectedData_put["points"]:
-#             holder_put.append({x[k] for k in ["x", "y"]})
-#         #return json.dumps({k: selectedData["points"][0][k] for k in ["x", "y"]})
-#     return "CALL: "+str(holder)+ " PUT: "+str(holder_put)
-    # if(value):
-    #     for x in value["points"]:
-    #         holder.append(json.dumps({k: x["points"][0][k] for k in ["x", "y"]}))
-    #     return str(list(set(holder)))
+def update_greektablevis(name,select_option,select_option_put,timestamp,rows):
+    option=get_option(name,select_option,select_option_put)
+    if (option is not None) and rows:
+        num=[]
+        for row in rows:
+            num.append(int(row['input-data']))
+        if(len(num)==len(option)):
+            option['Num']=num
+        return greektablevis(option,si.get_live_price(name))
+
+@app.callback(
+    Output("PnLtablevis", "srcDoc"),
+    State('stock', 'value'),
+    Input('expiration_price', 'selectedData'),
+    Input('expiration_price_put', 'selectedData'),
+    Input("computed-table", "data_timestamp"),
+    State('computed-table', 'data')
+)
+def update_PnLtablevis(name,select_option,select_option_put,timestamp,rows):
+    option=get_option(name,select_option,select_option_put)
+    if (option is not None) and rows:
+        num=[]
+        for row in rows:
+            num.append(int(row['input-data']))
+        if(len(num)==len(option)):
+            option['Num']=num
+        return PnLtablevis(option,si.get_live_price(name))
+
 
 @app.callback(
     Output("plot", "figure"),
@@ -880,122 +785,33 @@ def update_greekvis(name,click_option,select_option,click_option_put,select_opti
 def update_plot(name):
     return plot_selection_price(name)
 
+# callback to update option table based on option selected
 @app.callback(
     Output("option-table", "data"),
     Input('stock', 'value'),
-    Input('expiration_price', 'clickData'),
     Input('expiration_price', 'selectedData'),
-    Input('expiration_price_put', 'clickData'),
     Input('expiration_price_put', 'selectedData'),
 )
-#
-def update_table(name,click_option,select_option,click_option_put,select_option_put):
-    option=None
-    if(select_option):
-        holder=[]
-        for x in select_option["points"]:
-            holder.append({k:x[k] for k in ["x", "y"]})
-        option=filter_option(holder[0],name,"CALL")
-        for i in holder[1:len(holder)]:
-            s=filter_option(i,name,"CALL")
-            option=pd.concat([option,s])
-    if(select_option_put):
-        holder=[]
-        for x in select_option_put["points"]:
-            holder.append({k:x[k] for k in ["x", "y"]})
-        option_put=filter_option(holder[0],name,"PUT")
-        for i in holder[1:len(holder)]:
-            s=filter_option(i,name,"PUT")
-            option_put=pd.concat([option_put,s])
-    if((select_option is not None) & (select_option_put is not None)):
-        option=pd.concat([option,option_put])
-    elif(select_option_put is not None):
-        option=option_put
+
+def update_table(name,select_option,select_option_put):
+    option=get_option(name,select_option,select_option_put)
     if(option is not None):
         return option.iloc[:,[1,3,8,23,24,25,35]].to_dict(orient='records')
     return options.iloc[:,[1,3,8,23,24,25,35]].to_dict(orient='records')
 
-# @app.callback(
-#     Output("table", "figure"),
-#     Input('stock', 'value'),
-#     Input('expiration_price', 'clickData'),
-#     Input('expiration_price', 'selectedData'),
-#     Input('expiration_price_put', 'clickData'),
-#     Input('expiration_price_put', 'selectedData'),
-# )
-# #
-# def update_table(name,click_option,select_option,click_option_put,select_option_put):
-#     option=None
-#     if(select_option):
-#         holder=[]
-#         for x in select_option["points"]:
-#             holder.append({k:x[k] for k in ["x", "y"]})
-#         option=filter_option(holder[0],name,"CALL")
-#         for i in holder[1:len(holder)]:
-#             s=filter_option(i,name,"CALL")
-#             option=pd.concat([option,s])
-#     if(select_option_put):
-#         holder=[]
-#         for x in select_option_put["points"]:
-#             holder.append({k:x[k] for k in ["x", "y"]})
-#         option_put=filter_option(holder[0],name,"PUT")
-#         for i in holder[1:len(holder)]:
-#             s=filter_option(i,name,"PUT")
-#             option_put=pd.concat([option_put,s])
-#     if((select_option is not None) & (select_option_put is not None)):
-#         option=pd.concat([option,option_put])
-#     elif(select_option_put is not None):
-#         option=option_put
-#     if(option is not None):
-#         return print_table(option)
-#     return print_table(options)
-
+# callback to update input quantity table based on option selected
 @app.callback(
     Output('computed-table', 'data'),
     Input('stock', 'value'),
-    Input('expiration_price', 'clickData'),
     Input('expiration_price', 'selectedData'),
-    Input('expiration_price_put', 'clickData'),
     Input('expiration_price_put', 'selectedData'),
-    #Input('expiration_price', 'selectedData')
 )
-def update_quantity_table(name,click_option,select_option,click_option_put,select_option_put):
-    n=2
-    if(select_option):
-        holder=[]
-        for x in select_option["points"]:
-            holder.append({k:x[k] for k in ["x", "y"]})
-        option=filter_option(holder[0],name,"CALL")
-        for i in holder[1:len(holder)]:
-            s=filter_option(i,name,"CALL")
-            option=pd.concat([option,s])
-        n=len(option)
-    if(select_option_put):
-        holder=[]
-        for x in select_option_put["points"]:
-            holder.append({k:x[k] for k in ["x", "y"]})
-        option_put=filter_option(holder[0],name,"PUT")
-        for i in holder[1:len(holder)]:
-            s=filter_option(i,name,"PUT")
-            option_put=pd.concat([option_put,s])
-    if((select_option is not None) & (select_option_put is not None)):
-        option=pd.concat([option,option_put])
-        n=len(option)
-    elif(select_option_put is not None):
-        option=option_put
+def update_quantity_table(name,select_option,select_option_put):
+    n=2 # same as initialization, may not be necessary
+    option=get_option(name,select_option,select_option_put)
+    if(option is not None):
         n=len(option)
     return pd.DataFrame({'input-data':np.ones(n)}).to_dict(orient='records')
-
-# @app.callback(
-#     Output("widget3", "value"),
-#     Input("computed-table", "data_timestamp"),
-#     State('computed-table', 'data')
-# )
-# def update_widget3(timestamp,rows):
-#     holder=[]
-#     for row in rows:
-#         holder.append(int(row['input-data']))
-#     return str(holder)
 
 
 if __name__ == '__main__':
