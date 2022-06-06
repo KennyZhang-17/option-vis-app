@@ -413,7 +413,7 @@ def PnL_Table_Vis(options,lastprice,days=30):
     """
     priceRange = linear_price_range(lastprice,stepNum=20,percent=0.2)
     dateRange = [1000*int((dt.date.today()+dt.timedelta(days=i)).strftime('%s')) for i in range(days)]
-    
+
 
     optionss = option_stockprice_dates_DF(priceRange,dateRange,options)
 
@@ -427,7 +427,7 @@ def PnL_Table_Vis(options,lastprice,days=30):
     PnL_DF = optionss[['stockPrice','dates','Return']].groupby(['stockPrice','dates']).sum().reset_index()
 
 
-    # https://altair-viz.github.io/user_guide/times_and_dates.html 
+    # https://altair-viz.github.io/user_guide/times_and_dates.html
     # https://altair-viz.github.io/user_guide/transform/timeunit.html#user-guide-timeunit-transform
 
 
@@ -562,7 +562,7 @@ server = app.server
 app.layout = html.Div([
         html.H1('Option Visualization Tool'),
         html.P('Developed by Yang Yu and Kenny Zhang from University of Washington'),
-        html.P('Instruction: 1. Select a stock.         2. Select option(s). Adjust option quantities if neeeded.        3. Click the candle chart to select a date and price'),
+        html.P('Instruction: 1. Select a stock.         2. Select option(s) (press shift for multi-select). Adjust option quantities if neeeded.        3. Click the candle chart to select a date and price'),
         html.Hr(),
         html.P('Select a stock for trading'),
         dcc.Dropdown(
@@ -577,7 +577,7 @@ app.layout = html.Div([
         dcc.Graph(figure=expiration_price(name="TSLA",callput="CALL"),id="expiration_price",style={'display': 'inline-block'}),
         dcc.Graph(figure=expiration_price(name="TSLA",callput="PUT"),id="expiration_price_put",style={'display': 'inline-block'}),
     ]),
-        
+
         html.P('You may change the quantity by typing numbers in the cell and press enter. Options selected:'),
         html.Div([
         html.Div([print_options(options)], style={'display': 'inline-block'}),
@@ -618,9 +618,9 @@ app.layout = html.Div([
             id='PnLtablevis',
             style={'border-width': '0', 'width': '50%', 'height': '500px','display': 'inline-block'},
             srcDoc=PnLtablevis(options,stockprice)),
-        
+
         # , style={'display': 'inline-block'})
-        
+
 
         ])
 
