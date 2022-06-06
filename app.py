@@ -14,6 +14,9 @@ import json
 from scipy import stats
 import sys
 
+from yahoo_fin import stock_info as si
+
+
 #import dash_bootstrap_components as dbc
 # import panel as pn
 # pn.extension('vega')
@@ -125,12 +128,16 @@ def option_stockprice_dates_DF(priceRange,dateRange,options):
     options['dates'] = options.apply(lambda df:dateRange,axis=1)
     newdf = options.explode('stockPrice').explode('dates')
     return newdf
+
+# Plotting functions
 def Greeks_Vis(options,stockprice,date):
     """
     options: dataframe of options (pandas dataframe)
     stockprice: prediction of the underlying stock price (number)
     date: prediction date (dt.date or dt.datetime)
     """
+    if (options is None):
+        return alt.Chart().mark_text()
 
     options['delta_theo'] = options.apply(lambda df: df.Num * greeks_theo('delta',df.putCall,stockprice,df.strikePrice,daysLeft(df.expirationDate,date),df.volatility),axis=1)
     options['theta_theo'] = options.apply(lambda df: df.Num * greeks_theo('theta',df.putCall,stockprice,df.strikePrice,daysLeft(df.expirationDate,date),df.volatility),axis=1)
@@ -199,7 +206,8 @@ def Option_PnL_Vis(options,date,centerPrice):
     date: date of PnL  (dt.date or dt.datetime)
     centerPrice: The visualization will draw the PnL diagram around centerPrice
     """
-
+    if (options is None):
+        return alt.Chart().mark_text()
 
 
     def option_stockprice_DF(centerPrice,options,stepNum=500,percent=0.8):
@@ -296,6 +304,8 @@ def OptionPriceVis(options,stockprice,date):
     stockprice: prediction of the underlying stock price (number)
     date: prediction date (dt.date or dt.datetime)
     """
+    if (options is None):
+        return alt.Chart().mark_text()
 
     options['ExpectedPrice'] = options.apply(lambda df: optionpriceRow(df,stockprice,date),axis=1)
 
@@ -363,6 +373,10 @@ def Greek_Table_Vis(options,stockprice,days=30,greek='delta'):
     priceRange: list of prices
     greek: greek name to visualize, 'delta','theta','gamma'
     """
+    if (options is None):
+        return alt.Chart().mark_text()
+
+
     priceRange = linear_price_range(stockprice,stepNum=20,percent=0.2)
     dateRange = [1000*int((dt.date.today()+dt.timedelta(days=i)).strftime('%s')) for i in range(days)]
 
@@ -386,9 +400,44 @@ def Greek_Table_Vis(options,stockprice,days=30,greek='delta'):
         alt.Y('stockPrice:O',scale=alt.Scale(zero=False),sort='descending'),
         alt.Color('{}_theo:Q'.format(greek), scale=alt.Scale(scheme='purpleblue')),
         tooltip=['dates:T','stockPrice','delta_theo','theta_theo','gamma_theo','dates']
-    ).properties(width=600)
+    ).properties(width=500)
 
     return a
+
+def PnL_Table_Vis(options,lastprice,days=30):
+    """
+    Visualize PnL in {days} days
+    options: dateframe
+    days: positive integer
+    lastprice: priceRange center
+    """
+    priceRange = linear_price_range(lastprice,stepNum=20,percent=0.2)
+    dateRange = [1000*int((dt.date.today()+dt.timedelta(days=i)).strftime('%s')) for i in range(days)]
+    
+
+    optionss = option_stockprice_dates_DF(priceRange,dateRange,options)
+
+
+    def calculatePnL(optionss):
+        optionss['ExpectedPrice'] = optionss.apply(lambda df: optionprice(df.putCall,df.stockPrice,df.strikePrice,daysLeft(df.expirationDate,dt.datetime.fromtimestamp(df.dates/1000)),df.volatility),axis=1)
+        optionss['Return'] = optionss.apply(lambda df: 100 * (df.ExpectedPrice - df.mark)*df.Num,axis=1)
+
+    calculatePnL(optionss)
+
+    PnL_DF = optionss[['stockPrice','dates','Return']].groupby(['stockPrice','dates']).sum().reset_index()
+
+
+    # https://altair-viz.github.io/user_guide/times_and_dates.html 
+    # https://altair-viz.github.io/user_guide/transform/timeunit.html#user-guide-timeunit-transform
+
+
+    res = alt.Chart(PnL_DF).mark_rect().encode(
+        alt.X('monthdate(dates):O'),
+        alt.Y('stockPrice:O',scale=alt.Scale(zero=False),sort='descending'),
+        alt.Color('Return:Q', scale=alt.Scale(scheme='purpleblue')),
+        tooltip=['dates:T','stockPrice','dates','Return']
+    ).properties(width=500)
+    return res
 
 # Plotly fig for selection price
 def plot_selection_price(name="TSLA"):
@@ -448,6 +497,9 @@ def greekvis(options,stockprice,date):
 
 def greektablevis(options,stockprice):
     return Greek_Table_Vis(options,stockprice,days=30).to_html()
+
+def PnLtablevis(options,stockprice):
+    return PnL_Table_Vis(options,stockprice,days=30).to_html()
 
 # Table for print selected option information
 def print_options(options):
@@ -510,6 +562,8 @@ server = app.server
 app.layout = html.Div([
         html.H1('Option Visualization Tool'),
         html.P('Developed by Yang Yu and Kenny Zhang from University of Washington'),
+        html.P('Instruction: 1. Select a stock.         2. Select option(s). Adjust option quantities if neeeded.        3. Click the candle chart to select a date and price'),
+        html.Hr(),
         html.P('Select a stock for trading'),
         dcc.Dropdown(
             id='stock', value='TSLA',
@@ -518,56 +572,82 @@ app.layout = html.Div([
             {'label': 'TSLA', 'value': 'TSLA'},
             {'label': 'AAPL', 'value': 'AAPL'},
             {'label': 'QQQ', 'value': 'QQQ'}]),
-        html.P('Click option(s) for trading'),
+        html.P('Click option(s) for trading: (option data on June 4, 2022)'),
         html.Div(className='row',children=[
         dcc.Graph(figure=expiration_price(name="TSLA",callput="CALL"),id="expiration_price",style={'display': 'inline-block'}),
         dcc.Graph(figure=expiration_price(name="TSLA",callput="PUT"),id="expiration_price_put",style={'display': 'inline-block'}),
     ]),
-        html.P('Click a future price for prediction'),
-        dcc.Graph(figure=plot_selection_price(name="TSLA"),id="plot"),
+        
         html.P('You may change the quantity by typing numbers in the cell and press enter. Options selected:'),
         html.Div([
         html.Div([print_options(options)], style={'display': 'inline-block'}),
         html.Div([quantity_table(n)], style={'display': 'inline-block'}),
     ]),
-        html.P('Future date and price selected:'),
-        dcc.Textarea(id='widget1'),
-        dcc.Textarea(id='widget2'),
-        html.P('Prediction result:'),
+        html.Hr(),
+        html.P('Click a future price for prediction'),
+        html.Div([dcc.Graph(figure=plot_selection_price(name="TSLA"),id="plot")]),
+
+        html.Div(id='widget1'),
+
         html.Iframe(
             id='pricevis',
             style={'border-width': '0', 'width': '100%', 'height': '200px'},
             srcDoc=pricevis(options,stockprice,date)),
         html.Iframe(
-            id='pnlvis',
-            style={'border-width': '0', 'width': '100%', 'height': '400px'},
-            srcDoc=pnlvis(options,stockprice,date)),
-        html.Iframe(
             id='greekvis',
             style={'border-width': '0', 'width': '100%', 'height': '200px'},
             srcDoc=greekvis(options,stockprice,date)),
+
+        html.Hr(),
+
+        # html.P('Choose a date to see option prices / PnL curve(s) of stock prices'),
+        html.Div(id='widget2'),
+        html.Iframe(
+            id='pnlvis',
+            style={'border-width': '0', 'width': '100%', 'height': '400px'},
+            srcDoc=pnlvis(options,stockprice,date)),
+
+        html.Hr(),
+
+        html.P('Risk management and PnL for selected options'),
         html.Iframe(
             id='greektablevis',
-            style={'border-width': '0', 'width': '100%', 'height': '500px'},
+            style={'border-width': '0', 'width': '50%', 'height': '500px','display': 'inline-block'},
             srcDoc=greektablevis(options,stockprice)),
+        html.Iframe(
+            id='PnLtablevis',
+            style={'border-width': '0', 'width': '50%', 'height': '500px','display': 'inline-block'},
+            srcDoc=PnLtablevis(options,stockprice)),
+        
+        # , style={'display': 'inline-block'})
+        
+
         ])
+
+
 
 # call back for display future price and date selection
 @app.callback(
-    Output("widget1", "value"),
+    Output("widget1", "children"),
     Input("plot", "clickData")
 )
 def update_widget1(clickData):
     if(clickData):
-        return str(clickData["points"][0]["x"])
+        return 'Prediction result for date={} & price={}:'.format(str(clickData["points"][0]["x"]), str(clickData["points"][0]["y"]))
+    else:
+        return 'Future date and price NOT selected yet. Please click the candle chart to select a date and price'
+
 
 @app.callback(
-    Output("widget2", "value"),
+    Output("widget2", "children"),
     Input("plot", "clickData")
 )
 def update_widget2(clickData):
     if(clickData):
-        return str(clickData["points"][0]["y"])
+        return 'Prediction result for date={}:'.format(str(clickData["points"][0]["x"]))
+    else:
+        return 'Future date NOT selected yet. Please click the candle chart to select a date'
+
 
 # callback to display options (call) based on stock selected
 @app.callback(
@@ -590,7 +670,7 @@ def update_plot(b):
 # callback to update prediction plots
 @app.callback(
     Output("pricevis", "srcDoc"),
-    Input('stock', 'value'), # stock selected
+    State('stock', 'value'), # stock selected
     Input('expiration_price', 'selectedData'), # option (call) selected
     Input('expiration_price_put', 'selectedData'), # option (put) selected
     Input('plot','clickData'), # future price and expiration selected
@@ -615,7 +695,7 @@ def update_pricevis(name,select_option,select_option_put,click_price,timestamp,r
 
 @app.callback(
     Output("pnlvis", "srcDoc"),
-    Input('stock', 'value'),
+    State('stock', 'value'),
     Input('expiration_price', 'selectedData'),
     Input('expiration_price_put', 'selectedData'),
     Input('plot','clickData'),
@@ -639,7 +719,7 @@ def update_pnlvis(name,select_option,select_option_put,click_price,timestamp,row
 
 @app.callback(
     Output("greekvis", "srcDoc"),
-    Input('stock', 'value'),
+    State('stock', 'value'),
     Input('expiration_price', 'selectedData'),
     Input('expiration_price_put', 'selectedData'),
     Input('plot','clickData'),
@@ -662,25 +742,39 @@ def update_greekvis(name,select_option,select_option_put,click_price,timestamp,r
 
 @app.callback(
     Output("greektablevis", "srcDoc"),
-    Input('stock', 'value'),
+    State('stock', 'value'),
     Input('expiration_price', 'selectedData'),
     Input('expiration_price_put', 'selectedData'),
-    Input('plot','clickData'),
     Input("computed-table", "data_timestamp"),
     State('computed-table', 'data')
 )
-def update_greektablevis(name,select_option,select_option_put,click_price,timestamp,rows):
+def update_greektablevis(name,select_option,select_option_put,timestamp,rows):
     option=get_option(name,select_option,select_option_put)
-    if((option is not None) & (click_price is not None)):
-        click_price=json.loads(json.dumps({k: click_price["points"][0][k] for k in ["x", "y"]}))
-        price=click_price['y']
-        if(rows):
-            num=[]
-            for row in rows:
-                num.append(int(row['input-data']))
-            if(len(num)==len(option)):
-                option['Num']=num
-        return greektablevis(option,price)
+    if (option is not None) and rows:
+        num=[]
+        for row in rows:
+            num.append(int(row['input-data']))
+        if(len(num)==len(option)):
+            option['Num']=num
+        return greektablevis(option,si.get_live_price(name))
+
+@app.callback(
+    Output("PnLtablevis", "srcDoc"),
+    State('stock', 'value'),
+    Input('expiration_price', 'selectedData'),
+    Input('expiration_price_put', 'selectedData'),
+    Input("computed-table", "data_timestamp"),
+    State('computed-table', 'data')
+)
+def update_PnLtablevis(name,select_option,select_option_put,timestamp,rows):
+    option=get_option(name,select_option,select_option_put)
+    if (option is not None) and rows:
+        num=[]
+        for row in rows:
+            num.append(int(row['input-data']))
+        if(len(num)==len(option)):
+            option['Num']=num
+        return PnLtablevis(option,si.get_live_price(name))
 
 
 @app.callback(
