@@ -503,7 +503,7 @@ def PnLtablevis(options,stockprice):
 
 # Table for print selected option information
 def print_options(options):
-    option_table=options.iloc[:,[1,3,8,23,24,25,35]] # only display these columns
+    option_table=options.iloc[:,[3,1,33,35,5,6,8,17,28]] # only display these columns
     table=dash_table.DataTable(id='option-table', data=option_table.to_dict('records'), columns=[{"name": i, "id": i} for i in option_table.columns])
     return table
 
@@ -562,7 +562,7 @@ server = app.server
 app.layout = html.Div([
         html.H1('Option Visualization Tool'),
         html.P('Developed by Yang Yu and Kenny Zhang from University of Washington'),
-        html.P('Instruction: 1. Select a stock.         2. Select option(s) (press shift for multi-select). Adjust option quantities if neeeded.        3. Click the candle chart to select a date and price'),
+        html.P('Instruction:\n 1. Select a stock.\n  2. Select option(s) (press shift for multi-select). Adjust option quantities if neeeded.\n  3. Click the candle chart to select a date and price'),
         html.Hr(),
         html.P('Select a stock for trading'),
         dcc.Dropdown(
@@ -572,13 +572,14 @@ app.layout = html.Div([
             {'label': 'TSLA', 'value': 'TSLA'},
             {'label': 'AAPL', 'value': 'AAPL'},
             {'label': 'QQQ', 'value': 'QQQ'}]),
+
         html.P('Click option(s) for trading: (option data on June 4, 2022)'),
         html.Div(className='row',children=[
         dcc.Graph(figure=expiration_price(name="TSLA",callput="CALL"),id="expiration_price",style={'display': 'inline-block'}),
         dcc.Graph(figure=expiration_price(name="TSLA",callput="PUT"),id="expiration_price_put",style={'display': 'inline-block'}),
     ]),
 
-        html.P('You may change the quantity by typing numbers in the cell and press enter. Options selected:'),
+        html.P('You may change the quantity by typing numbers in the cell and press enter (positive for buying, negative for selling). Options selected:'),
         html.Div([
         html.Div([print_options(options)], style={'display': 'inline-block'}),
         html.Div([quantity_table(n)], style={'display': 'inline-block'}),
@@ -799,8 +800,8 @@ def update_plot(name):
 def update_table(name,select_option,select_option_put):
     option=get_option(name,select_option,select_option_put)
     if(option is not None):
-        return option.iloc[:,[1,3,8,23,24,25,35]].to_dict(orient='records')
-    return options.iloc[:,[1,3,8,23,24,25,35]].to_dict(orient='records')
+        return option.iloc[:,[3,1,33,35,5,6,8,17,28]].to_dict(orient='records')
+    return options.iloc[:,[3,1,33,35,5,6,8,17,28]].to_dict(orient='records')
 
 # callback to update input quantity table based on option selected
 @app.callback(
