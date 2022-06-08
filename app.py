@@ -602,10 +602,14 @@ app.layout = html.Div([
             id='pricevis',
             style={'border-width': '0', 'width': '100%', 'height': '200px'},
             srcDoc=pricevis(options,stockprice,date)),
+        html.P('(*Above charts: ticks are market prices and bars are expected option prices given the date and stock price. ExpectedReturn = (ExpectedPrice - mark)*100 )'),
         html.Iframe(
             id='greekvis',
             style={'border-width': '0', 'width': '100%', 'height': '200px'},
             srcDoc=greekvis(options,stockprice,date)),
+        html.P('(*Above charts: delta (theoretically) indicates how much option value changes if the underlying stock price goes up by 1 dollar; \
+            theta indicates how much option value changes if time goes by 1 day with the underlying stock price unchanged\
+            gamma indicates how much delta changes if the underlying stock price goes up by 1 dollar)'),
 
         html.Hr(),
 
@@ -615,6 +619,7 @@ app.layout = html.Div([
             id='pnlvis',
             style={'border-width': '0', 'width': '100%', 'height': '400px'},
             srcDoc=pnlvis(options,stockprice,date)),
+        html.P('(*Profit/Loss (or Return) on the given date based on the stock price.)'),
 
         html.Hr(),
 
@@ -627,7 +632,7 @@ app.layout = html.Div([
             id='PnLtablevis',
             style={'border-width': '0', 'width': '50%', 'height': '500px','display': 'inline-block'},
             srcDoc=PnLtablevis(options,stockprice)),
-
+        html.P('(*delta and Return heat map charts based on date and the stock price for the selected option combination.)')
         # , style={'display': 'inline-block'})
 
 
