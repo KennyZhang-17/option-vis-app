@@ -480,6 +480,7 @@ chart = alt.Chart(df)
 n = 2
 
 options = df.sample(n)
+options['description'] = ['These are sample rows','Please select option(s) using above charts']
 num=np.ones(len(options))
 options['Num']=num
 stockprice = 700
@@ -691,7 +692,7 @@ def update_pricevis(name,select_option,select_option_put,click_price,timestamp,r
             if(len(num)==len(option)):
                 option['Num']=num
         return pricevis(option,price,date_select)
-    return pricevis(option,si.get_live_price(name),dt.date.today())
+    # return pricevis(option,si.get_live_price(name),dt.date.today())
 
 
 
@@ -717,7 +718,7 @@ def update_pnlvis(name,select_option,select_option_put,click_price,timestamp,row
             if(len(num)==len(option)):
                 option['Num']=num
         return pnlvis(option,price,date_select)
-    return pnlvis(option,si.get_live_price(name),dt.date.today())
+    # return pnlvis(option,si.get_live_price(name),dt.date.today())
 
 
 @app.callback(
@@ -742,7 +743,7 @@ def update_greekvis(name,select_option,select_option_put,click_price,timestamp,r
             if(len(num)==len(option)):
                 option['Num']=num
         return greekvis(option,price,date_select)
-    return greekvis(option,si.get_live_price(name),dt.date.today())
+    # return greekvis(option,si.get_live_price(name),dt.date.today())
 
 @app.callback(
     Output("greektablevis", "srcDoc"),
