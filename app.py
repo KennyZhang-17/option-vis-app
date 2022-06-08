@@ -564,6 +564,13 @@ app.layout = html.Div([
         html.H1('Option Visualization Tool'),
         html.P('Developed by Yang Yu and Kenny Zhang from University of Washington'),
         html.P('Instruction:\n 1. Select a stock.\n  2. Select option(s) (press shift for multi-select). Adjust option quantities if neeeded.\n  3. Click the candle chart to select a date and price'),
+        html.Div(['Basics about options: ',
+        dcc.Link('call options',href='https://en.wikipedia.org/wiki/Call_option',target='_blank'), 
+        ', ',
+        dcc.Link('put options',href='https://en.wikipedia.org/wiki/Put_option',target='_blank'),
+        ', ',
+        dcc.Link('greeks (delta, theta, gamma)',href='https://en.wikipedia.org/wiki/Greeks_(finance)',target='_blank'),
+        ]),
         html.Hr(),
         html.P('Select a stock for trading'),
         dcc.Dropdown(
