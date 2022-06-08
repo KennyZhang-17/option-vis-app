@@ -480,7 +480,7 @@ chart = alt.Chart(df)
 n = 2
 
 options = df.sample(n)
-options['description'] = ['These are sample rows','Please select option(s) using above charts']
+options['description'] = ['These are sample rows. Options not selected yet','Please select option(s) using above charts']
 num=np.ones(len(options))
 options['Num']=num
 stockprice = 700
